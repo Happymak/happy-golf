@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="115" fill="#0a1612"/>
+
+  <!-- Shield outline -->
+  <path d="M 140 90 L 372 90 L 380 130 L 385 260 L 370 360 L 320 420 L 256 450 L 192 420 L 142 360 L 127 260 L 132 130 Z"
+        fill="none" stroke="#e8e3d3" stroke-width="14" stroke-linejoin="round"/>
+
+  <!-- Circle for the H -->
+  <circle cx="256" cy="220" r="95" fill="none" stroke="#e8e3d3" stroke-width="14"/>
+
+  <!-- H letter -->
+  <text x="256" y="265" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif"
+        font-size="135" font-weight="bold" fill="#e8e3d3">H</text>
+
+  <!-- Tee head (cup) -->
+  <path d="M 226 335 L 286 335 L 278 353 L 234 353 Z" fill="#d4af37"/>
+
+  <!-- Tee stem -->
+  <path d="M 249 353 L 263 353 L 259 403 L 253 403 Z" fill="#d4af37"/>
+
+  <!-- Tee tip -->
+  <path d="M 253 403 L 259 403 L 256 411 Z" fill="#d4af37"/>
+</svg>
