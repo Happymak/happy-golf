@@ -11,10 +11,30 @@ export default function GolfApp() {
   const [practiceView, setPracticeView] = useState(null);
   const [showWaldron, setShowWaldron] = useState(false);
   const [editingMantra, setEditingMantra] = useState(false);
-  const [cmExpanded, setCmExpanded] = useState(null); // 'decade' | 'tiger' | null
-  const [fontScale, setFontScale] = useState(1); // 1 = normal, 1.2 = larger, 1.4 = largest
-  const [lastRoundScore, setLastRoundScore] = useState(102); // Dynamic score shown in Round icon
+  const [cmExpanded, setCmExpanded] = useState(null);
+  const [fontScale, setFontScale] = useState(1);
   const [roundImageFullscreen, setRoundImageFullscreen] = useState(false);
+  const [showRoundForm, setShowRoundForm] = useState(false);
+
+  // Latest round - full object instead of just score
+  const defaultRound = {
+    courseShort: 'NORMANDY',
+    courseFull: 'Miami Beach Golf Club',
+    date: '2026-05-13',
+    dateDisplay: 'May 13, 2026',
+    coursePar: 72,
+    overPar: 30,
+    grossScore: 102,
+    netScore: 83,
+    differential: 23.6,
+    teeColor: 'Blue',
+    yards: 6430,
+    slope: 138,
+    courseHandicap: 19,
+    image: '/round-may13.png', // path or data URL
+    notes: ''
+  };
+  const [lastRound, setLastRound] = useState(defaultRound);
 
   const [mantraText, setMantraText] = useState('');
   const [quoteIdx, setQuoteIdx] = useState(0);
@@ -56,7 +76,7 @@ I'm lucky to be playing this game.`;
         setMantraText(parsed.mantraText !== undefined ? parsed.mantraText : defaultMantra);
         setPracticeLog(parsed.practiceLog || []);
         if (parsed.fontScale) setFontScale(parsed.fontScale);
-        if (parsed.lastRoundScore) setLastRoundScore(parsed.lastRoundScore);
+        if (parsed.lastRound) setLastRound(parsed.lastRound);
       } else {
         setMantraText(defaultMantra);
         const todaySession = {
@@ -85,7 +105,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
         mantraText: updates.mantraText ?? mantraText,
         practiceLog: updates.practiceLog ?? practiceLog,
         fontScale: updates.fontScale ?? fontScale,
-        lastRoundScore: updates.lastRoundScore ?? lastRoundScore
+        lastRound: updates.lastRound ?? lastRound
       };
       localStorage.setItem('happy-golf-v2', JSON.stringify(state));
     } catch (e) {}
@@ -166,7 +186,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
     },
     {
       id: 'elevated', num: '02', icon: 'elevated',
-      title: 'Elevated Chip Shot', subtitle: 'Over slopes and breaks',
+      title: 'Elevated Chip and Pitch Shots', subtitle: 'Over slopes and breaks',
       color: '#a78bfa',
       insight: 'Backswing length controls distance, not force',
       current: 'Inconsistent contact and distance.',
@@ -323,27 +343,56 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
   const sans = "'Inter', 'Helvetica Neue', sans-serif";
 
   // ============== ROUTING HELPERS ==============
-  const goHome = () => { setView('home'); setAreaView(null); setPracticeView(null); setShowWaldron(false); };
+  const goHome = () => { setView('home'); setAreaView(null); setPracticeView(null); setShowWaldron(false); setShowRoundForm(false); };
   const goBack = () => {
+    if (showRoundForm) { setShowRoundForm(false); return; }
     if (showWaldron) { setShowWaldron(false); return; }
     if (areaView) { setAreaView(null); return; }
     if (practiceView) { setPracticeView(null); return; }
     goHome();
   };
 
+  // ====== Swipe-right-to-go-back gesture ======
+  const touchStartRef = useRef({ x: 0, y: 0, time: 0 });
+  const handleTouchStart = (e) => {
+    if (view === 'home') return; // No swipe on home (nothing to go back to)
+    if (roundImageFullscreen) return; // Don't interfere with fullscreen modal
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
+  };
+  const handleTouchEnd = (e) => {
+    if (view === 'home') return;
+    if (roundImageFullscreen) return;
+    const t = e.changedTouches[0];
+    const start = touchStartRef.current;
+    if (!start.time) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const dt = Date.now() - start.time;
+    // Conditions: swipe right >80px, mostly horizontal (|dx| > 2*|dy|), under 500ms
+    // And must start near the left edge (within first 40px) to avoid hijacking scrolls
+    if (dx > 80 && Math.abs(dx) > Math.abs(dy) * 2 && dt < 500 && start.x < 40) {
+      goBack();
+    }
+    touchStartRef.current = { x: 0, y: 0, time: 0 };
+  };
+
   // ============== RENDER ==============
-  // fontScale is applied as a multiplier to specific text elements (mantra body, areas detail, CM principles)
-  // because px values don't inherit from em containers
+  // fontScale is applied as a multiplier to specific text elements
   const s = (px) => Math.round(px * fontScale);
 
   return (
-    <div style={{
-      minHeight: '100vh',
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      style={{
       background: `linear-gradient(180deg, ${C.bg2} 0%, ${C.bg} 60%)`,
       fontFamily: serif,
       color: C.text,
-      padding: '16px 16px 60px',
-      position: 'relative'
+      padding: '16px 16px 24px',
+      position: 'relative',
+      minHeight: '100vh',
+      boxSizing: 'border-box'
     }}>
       {/* Subtle grain texture */}
       <div style={{
@@ -372,29 +421,23 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
               ← Back
             </button>
 
-            {/* Font size toggle - visible on mantra and large text views */}
-            {(view === 'mantra' || view === 'cm' || showWaldron) && (
-              <button onClick={cycleFontScale} style={{
-                background: 'transparent', border: `1px solid ${C.border}`,
-                color: C.accent, padding: '8px 14px',
-                fontFamily: serif, cursor: 'pointer',
-                borderRadius: '4px',
-                display: 'inline-flex', alignItems: 'baseline', gap: '2px'
-              }} title="Change text size">
-                <span style={{ fontSize: '12px', opacity: 0.7 }}>a</span>
-                <span style={{ fontSize: '16px', fontWeight: 500 }}>A</span>
-              </button>
-            )}
+            {/* Font size toggle - visible on every non-home view */}
+            <button onClick={cycleFontScale} style={{
+              background: 'transparent', border: `1px solid ${C.border}`,
+              color: C.accent, padding: '8px 14px',
+              fontFamily: serif, cursor: 'pointer',
+              borderRadius: '4px',
+              display: 'inline-flex', alignItems: 'baseline', gap: '2px'
+            }} title="Change text size">
+              <span style={{ fontSize: '12px', opacity: 0.7 }}>a</span>
+              <span style={{ fontSize: '16px', fontWeight: 500 }}>A</span>
+            </button>
           </div>
         )}
 
         {/* ========== HOME ========== */}
         {view === 'home' && (
-          <div style={{
-            minHeight: 'calc(100vh - 76px)',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
+          <>
             <header style={{ textAlign: 'center', marginBottom: '24px', marginTop: '8px' }}>
               <div style={{
                 display: 'flex', alignItems: 'center',
@@ -423,16 +466,15 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
             <div style={{
               display: 'flex',
               flexDirection: 'column',
-              gap: '12px',
-              flex: 1
+              gap: '12px'
             }}>
               <HomeCard title="My Mantra"            subtitle="Why I play"              iconType="mantra"     C={C} serif={serif} sans={sans} onClick={() => setView('mantra')} />
               <HomeCard title="Course Management"    subtitle="DECADE · Tiger Five"     iconType="strategy"   C={C} serif={serif} sans={sans} onClick={() => setView('cm')} />
               <HomeCard title="Areas of Improvement" subtitle="Q2 2026"                 iconType="growth"     C={C} serif={serif} sans={sans} onClick={() => setView('areas')} />
               <HomeCard title="Practice Sessions"    subtitle="The Power of Six"        iconType="practice"   C={C} serif={serif} sans={sans} onClick={() => setView('practice')} />
-              <HomeCard title="Latest Golf Round"    subtitle="Score, feel, notes"      iconType="round"      scoreNumber={lastRoundScore}      C={C} serif={serif} sans={sans} onClick={() => setView('round')} />
+              <HomeCard title="Latest Golf Round"    subtitle="Score, feel, notes"      iconType="round"      roundData={lastRound}      C={C} serif={serif} sans={sans} onClick={() => setView('round')} />
             </div>
-          </div>
+          </>
         )}
 
         {/* ========== MANTRA ========== */}
@@ -595,11 +637,11 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
                   </div>
                   <AreaIcon type={area.icon} color={area.color} size={30} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '19px', fontStyle: 'italic', lineHeight: 1.2 }}>
+                    <div style={{ fontSize: `${s(19)}px`, fontStyle: 'italic', lineHeight: 1.2 }}>
                       {area.title}
                     </div>
                     <div style={{
-                      fontSize: '11px', letterSpacing: '0.18em',
+                      fontSize: `${s(11)}px`, letterSpacing: '0.18em',
                       textTransform: 'uppercase', opacity: 0.6,
                       fontFamily: sans, marginTop: '4px'
                     }}>
@@ -635,20 +677,20 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
               <div style={{
                 borderLeft: `3px solid ${area.color}`,
                 paddingLeft: '18px', marginBottom: '32px',
-                fontSize: '18px', fontStyle: 'italic',
+                fontSize: `${s(18)}px`, fontStyle: 'italic',
                 opacity: 0.9, lineHeight: 1.5
               }}>"{area.insight}"</div>
 
               <div style={{ marginBottom: '22px' }}>
                 <Label C={C} sans={sans} color={area.color}>Current Situation</Label>
-                <div style={{ fontFamily: sans, fontSize: '16px', fontWeight: 300, lineHeight: 1.6 }}>
+                <div style={{ fontFamily: sans, fontSize: `${s(16)}px`, fontWeight: 300, lineHeight: 1.6 }}>
                   {area.current}
                 </div>
               </div>
 
               <div style={{ marginBottom: '22px' }}>
                 <Label C={C} sans={sans} color={area.color}>Objective</Label>
-                <div style={{ fontFamily: sans, fontSize: '16px', fontWeight: 300, lineHeight: 1.6 }}>
+                <div style={{ fontFamily: sans, fontSize: `${s(16)}px`, fontWeight: 300, lineHeight: 1.6 }}>
                   {area.objective}
                 </div>
               </div>
@@ -660,7 +702,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
                 marginTop: '28px'
               }}>
                 <Label C={C} sans={sans}>Notes</Label>
-                <div style={{ fontFamily: sans, fontSize: '14px', fontWeight: 300, lineHeight: 1.7, opacity: 0.85 }}>
+                <div style={{ fontFamily: sans, fontSize: `${s(14)}px`, fontWeight: 300, lineHeight: 1.7, opacity: 0.85 }}>
                   {area.notes}
                 </div>
               </div>
@@ -1067,9 +1109,22 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
           </SubSectionHeader>
         )}
 
-        {/* ========== LATEST ROUND (with image) ========== */}
-        {view === 'round' && (
-          <SectionHeader title="Latest Golf Round" subtitle="May 13, 2026 · Miami Beach Golf Club" iconType="round" scoreNumber={lastRoundScore} C={C} serif={serif} sans={sans}>
+        {/* ========== LATEST ROUND ========== */}
+        {view === 'round' && !showRoundForm && (
+          <SectionHeader title="Latest Golf Round" subtitle={`${lastRound.dateDisplay} · ${lastRound.courseFull}`} iconType="round" roundData={lastRound} C={C} serif={serif} sans={sans}>
+
+            {/* Action bar — New Round button */}
+            <div style={{ marginBottom: '18px' }}>
+              <button onClick={() => setShowRoundForm(true)} style={{
+                width: '100%', background: 'transparent',
+                border: `1px dashed ${C.accent}70`,
+                color: C.accent, padding: '14px',
+                fontFamily: sans, fontSize: '12px',
+                letterSpacing: '0.2em', textTransform: 'uppercase',
+                cursor: 'pointer', borderRadius: '8px',
+                fontWeight: 500
+              }}>+ Log New Round</button>
+            </div>
 
             <div
               onClick={() => setRoundImageFullscreen(true)}
@@ -1082,7 +1137,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
                 cursor: 'pointer',
                 position: 'relative'
               }}>
-              <img src="/round-may13.png" alt="Miami Beach Golf Club scorecard - May 13, 2026"
+              <img src={lastRound.image} alt={`${lastRound.courseFull} scorecard - ${lastRound.dateDisplay}`}
                    style={{ width: '100%', display: 'block' }} />
               <div style={{
                 position: 'absolute', top: '8px', right: '8px',
@@ -1119,7 +1174,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
                 Reading the Round
               </div>
               <div style={{
-                fontFamily: sans, fontSize: '14px',
+                fontFamily: sans, fontSize: `${s(14)}px`,
                 fontWeight: 300, lineHeight: 1.7, opacity: 0.9
               }}>
                 <p style={{ marginTop: 0 }}>
@@ -1151,7 +1206,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
                 Focus for next round
               </div>
               <ul style={{
-                fontFamily: sans, fontSize: '14px',
+                fontFamily: sans, fontSize: `${s(14)}px`,
                 fontWeight: 300, lineHeight: 1.8, opacity: 0.9,
                 paddingLeft: '18px', margin: 0
               }}>
@@ -1163,6 +1218,42 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
             </div>
 
           </SectionHeader>
+        )}
+
+        {/* ========== NEW ROUND FORM ========== */}
+        {view === 'round' && showRoundForm && (
+          <NewRoundForm
+            onCancel={() => setShowRoundForm(false)}
+            onSave={(newRound) => {
+              setLastRound(newRound);
+              saveState({ lastRound: newRound });
+              setShowRoundForm(false);
+            }}
+            C={C} serif={serif} sans={sans}
+          />
+        )}
+
+        {/* Bottom Back button - shows on every non-home view */}
+        {view !== 'home' && (
+          <div style={{
+            marginTop: '36px',
+            paddingTop: '20px',
+            borderTop: `1px solid ${C.border}`,
+            display: 'flex',
+            justifyContent: 'center'
+          }}>
+            <button onClick={goBack} style={{
+              background: 'transparent', border: `1px solid ${C.border}`,
+              color: C.text, padding: '12px 28px',
+              fontFamily: sans, fontSize: '11px',
+              letterSpacing: '0.25em', textTransform: 'uppercase',
+              cursor: 'pointer', borderRadius: '6px',
+              opacity: 0.85, fontWeight: 500,
+              display: 'inline-flex', alignItems: 'center', gap: '10px'
+            }}>
+              ← Back
+            </button>
+          </div>
         )}
 
       </div>
@@ -1240,8 +1331,8 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
 
           {/* The image - shown rotated 90° on portrait phones to look "landscape" */}
           <img
-            src="/round-may13.png"
-            alt="Round May 13"
+            src={lastRound.image}
+            alt={`${lastRound.courseFull} scorecard`}
             onClick={(e) => e.stopPropagation()}
             style={{
               maxWidth: '95vw',
@@ -1274,7 +1365,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
 const ulStyle = { fontFamily: "'Inter', sans-serif", fontSize: '14px', fontWeight: 300, lineHeight: 1.7, opacity: 0.9, paddingLeft: '18px', margin: '8px 0' };
 const olStyle = { fontFamily: "'Inter', sans-serif", fontSize: '14px', fontWeight: 300, lineHeight: 1.7, opacity: 0.9, paddingLeft: '18px', margin: '8px 0' };
 
-function HomeCard({ title, subtitle, iconType, scoreNumber, C, serif, sans, onClick }) {
+function HomeCard({ title, subtitle, iconType, scoreNumber, roundData, C, serif, sans, onClick }) {
   return (
     <div onClick={onClick} style={{
       background: 'rgba(255,255,255,0.04)',
@@ -1284,11 +1375,9 @@ function HomeCard({ title, subtitle, iconType, scoreNumber, C, serif, sans, onCl
       cursor: 'pointer',
       display: 'flex',
       alignItems: 'center', gap: '18px',
-      transition: 'all 0.2s',
-      flex: 1,
-      minHeight: '78px'
+      transition: 'all 0.2s'
     }}>
-      <SectionIcon type={iconType} color={C.accent} size={38} scoreNumber={scoreNumber} />
+      <SectionIcon type={iconType} color={C.accent} size={iconType === 'round' ? 50 : 38} scoreNumber={scoreNumber} roundData={roundData} />
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: '24px', fontStyle: 'italic', letterSpacing: '-0.01em', lineHeight: 1.1 }}>{title}</div>
         <div style={{
@@ -1302,12 +1391,12 @@ function HomeCard({ title, subtitle, iconType, scoreNumber, C, serif, sans, onCl
   );
 }
 
-function SectionHeader({ title, subtitle, iconType, scoreNumber, children, C, serif, sans }) {
+function SectionHeader({ title, subtitle, iconType, scoreNumber, roundData, children, C, serif, sans }) {
   return (
     <div style={{ animation: 'fadeIn 0.4s' }}>
       <div style={{ marginBottom: '28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '6px' }}>
-          {iconType && <SectionIcon type={iconType} color={C.accent} size={34} scoreNumber={scoreNumber} />}
+          {iconType && <SectionIcon type={iconType} color={C.accent} size={iconType === 'round' ? 50 : 34} scoreNumber={scoreNumber} roundData={roundData} />}
           <div style={{
             fontSize: 'clamp(32px, 6.5vw, 44px)',
             fontStyle: 'italic', lineHeight: 1.05,
@@ -1792,191 +1881,248 @@ function BookIcon({ C, size = 24 }) {
 }
 
 // SECTION ICONS
-function SectionIcon({ type, color, size = 28, scoreNumber }) {
+
+// ============================================================
+// SECTION ICONS — line-art style, lime accent
+// Based on user reference image (May 18, 2026)
+// ============================================================
+function SectionIcon({ type, color, size = 28, scoreNumber, roundData }) {
   const props = { width: size, height: size, viewBox: '-16 -16 32 32', fill: 'none' };
+  const stroke = { stroke: color, strokeWidth: 1.1, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' };
 
+  // === MANTRA: meditation figure with lotus petals + aura rays ===
   if (type === 'mantra') {
-    // Meditation silhouette in lotus position - bold, simple, zen
     return (
       <svg {...props}>
+        {/* Aura rays (top) */}
+        <line x1="0" y1="-15" x2="0" y2="-13" {...stroke} />
+        <line x1="-5" y1="-13" x2="-4" y2="-11.5" {...stroke} />
+        <line x1="5" y1="-13" x2="4" y2="-11.5" {...stroke} />
+        <line x1="-8" y1="-10" x2="-6.5" y2="-9" {...stroke} />
+        <line x1="8" y1="-10" x2="6.5" y2="-9" {...stroke} />
         {/* Head */}
-        <circle cx="0" cy="-9.5" r="3.2" fill={color} opacity="0.95" />
-        {/* Torso - rounded shoulders */}
-        <path d="M -6 -5
-                 Q -6.5 -6 -5 -7
-                 L 5 -7
-                 Q 6.5 -6 6 -5
-                 L 6 -1
-                 Q 6 1 4 1
-                 L -4 1
-                 Q -6 1 -6 -1 Z"
-              fill={color} opacity="0.95" />
-        {/* Arms extending down to crossed legs */}
-        <path d="M -6 -2
-                 Q -10 0 -11 4
-                 Q -10 7 -7 6
-                 L -4 4 Z"
-              fill={color} opacity="0.95" />
-        <path d="M 6 -2
-                 Q 10 0 11 4
-                 Q 10 7 7 6
-                 L 4 4 Z"
-              fill={color} opacity="0.95" />
-        {/* Crossed legs - the lotus base */}
-        <path d="M -10 4
-                 Q -11 7 -7 8.5
-                 Q -3 9 0 8.5
-                 Q 3 9 7 8.5
-                 Q 11 7 10 4
-                 Q 5 6 0 6
-                 Q -5 6 -10 4 Z"
-              fill={color} opacity="0.95" />
+        <circle cx="0" cy="-7.5" r="2.4" {...stroke} />
+        {/* Torso/body with hands in prayer */}
+        <path d="M -3.5 -2
+                 Q -4 -5 -2 -5
+                 L -0.5 -3
+                 L 0 -1
+                 L 0.5 -3
+                 L 2 -5
+                 Q 4 -5 3.5 -2
+                 Q 3.5 1 2 2.5
+                 L -2 2.5
+                 Q -3.5 1 -3.5 -2 Z"
+              {...stroke} />
+        {/* Lotus base - crossed legs */}
+        <path d="M -3 2.5
+                 Q -6 4 -7 6
+                 Q -5 9 -2 8
+                 Q 0 7 2 8
+                 Q 5 9 7 6
+                 Q 6 4 3 2.5
+                 Z" {...stroke} />
+        {/* Lotus petals - left */}
+        <path d="M -7 5
+                 Q -11 5 -12 8
+                 Q -10 10 -8 8 Z" {...stroke} />
+        {/* Lotus petals - right */}
+        <path d="M 7 5
+                 Q 11 5 12 8
+                 Q 10 10 8 8 Z" {...stroke} />
+        {/* Lotus petals - outer left */}
+        <path d="M -10 7
+                 Q -13 9 -12 11
+                 Q -10 11 -8 9 Z" {...stroke} />
+        {/* Lotus petals - outer right */}
+        <path d="M 10 7
+                 Q 13 9 12 11
+                 Q 10 11 8 9 Z" {...stroke} />
       </svg>
     );
   }
 
-  if (type === 'growth') {
-    // Bar chart ascending + arrow + small gear (like the reference image)
-    return (
-      <svg {...props}>
-        {/* Three ascending bars - outlined */}
-        <rect x="-12" y="2" width="4.5" height="9" fill="none" stroke={color} strokeWidth="1.4" opacity="0.95" strokeLinejoin="round" />
-        <rect x="-6" y="-2" width="4.5" height="13" fill="none" stroke={color} strokeWidth="1.4" opacity="0.95" strokeLinejoin="round" />
-        <rect x="0" y="-6" width="4.5" height="17" fill="none" stroke={color} strokeWidth="1.4" opacity="0.95" strokeLinejoin="round" />
-
-        {/* Ascending arrow trajectory */}
-        <polyline points="-11,-2 -7,-7 -3,-5 0,-10 4,-12"
-                  fill="none" stroke={color} strokeWidth="1.6"
-                  strokeLinecap="round" strokeLinejoin="round" opacity="0.95" />
-        {/* Arrowhead */}
-        <polyline points="2,-12 5,-13 4,-9"
-                  fill="none" stroke={color} strokeWidth="1.6"
-                  strokeLinecap="round" strokeLinejoin="round" opacity="0.95" />
-
-        {/* Small gear bottom-right - indicates "the system" / mechanism */}
-        <g transform="translate(9, 7)">
-          {[0, 60, 120, 180, 240, 300].map((angle, i) => {
-            const rad = angle * Math.PI / 180;
-            const x = Math.cos(rad) * 4;
-            const y = Math.sin(rad) * 4;
-            return <rect key={i} x={x - 0.7} y={y - 0.7} width="1.4" height="1.4"
-                         fill={color} opacity="0.95"
-                         transform={`rotate(${angle} ${x} ${y})`} />;
-          })}
-          <circle cx="0" cy="0" r="3" fill="none" stroke={color} strokeWidth="1.1" opacity="0.95" />
-          <circle cx="0" cy="0" r="1.3" fill="none" stroke={color} strokeWidth="1" opacity="0.95" />
-        </g>
-      </svg>
-    );
-  }
-
+  // === STRATEGY: chess KING with cross on top ===
   if (type === 'strategy') {
-    // Chess QUEEN — crown with multiple points (5 spikes + small balls)
     return (
       <svg {...props}>
-        {/* Base — wide pedestal */}
-        <rect x="-9" y="9" width="18" height="3" fill={color} opacity="0.95" rx="0.5" />
-        <rect x="-8" y="6" width="16" height="3" fill={color} opacity="0.9" />
-        {/* Body — broader hourglass shape (queen vs king) */}
-        <path d="M -6 6
-                 Q -5.5 1 -3 -2
-                 L 3 -2
-                 Q 5.5 1 6 6 Z"
-              fill={color} opacity="0.9" />
-        {/* Neck collar */}
-        <rect x="-5" y="-3" width="10" height="1.8" fill={color} opacity="0.95" />
-        {/* Wider shoulders - queen distinctive */}
-        <path d="M -5 -3
-                 Q -7 -5 -5 -7
-                 L 5 -7
-                 Q 7 -5 5 -3 Z"
-              fill={color} opacity="0.9" />
-        {/* Crown points - the queen's defining feature (5 spikes with little balls) */}
-        {/* Left outer point */}
-        <path d="M -6 -7 L -7 -11 L -4.5 -8 Z" fill={color} opacity="0.95" />
-        <circle cx="-7" cy="-11.5" r="1" fill={color} opacity="0.95" />
-        {/* Left inner point */}
-        <path d="M -3 -7 L -3.5 -12 L -1.5 -8 Z" fill={color} opacity="0.95" />
-        <circle cx="-3.5" cy="-12.5" r="1" fill={color} opacity="0.95" />
-        {/* Center point - tallest */}
-        <path d="M -1 -7 L 0 -13 L 1 -7 Z" fill={color} opacity="0.95" />
-        <circle cx="0" cy="-13.5" r="1.1" fill={color} opacity="0.95" />
-        {/* Right inner point */}
-        <path d="M 1.5 -8 L 3.5 -12 L 3 -7 Z" fill={color} opacity="0.95" />
-        <circle cx="3.5" cy="-12.5" r="1" fill={color} opacity="0.95" />
-        {/* Right outer point */}
-        <path d="M 4.5 -8 L 7 -11 L 6 -7 Z" fill={color} opacity="0.95" />
-        <circle cx="7" cy="-11.5" r="1" fill={color} opacity="0.95" />
+        {/* Cross on top */}
+        <line x1="0" y1="-15" x2="0" y2="-11" {...stroke} strokeWidth="1.3" />
+        <line x1="-1.5" y1="-13" x2="1.5" y2="-13" {...stroke} strokeWidth="1.3" />
+        {/* Crown - upper portion (a small dome with band) */}
+        <ellipse cx="0" cy="-9" rx="3.5" ry="1.5" {...stroke} />
+        <path d="M -3.5 -9 L -3.5 -7" {...stroke} />
+        <path d="M 3.5 -9 L 3.5 -7" {...stroke} />
+        <ellipse cx="0" cy="-7" rx="3.5" ry="1.2" {...stroke} />
+        {/* Neck/collar band */}
+        <ellipse cx="0" cy="-5.5" rx="4.5" ry="1.3" {...stroke} />
+        <path d="M -4.5 -5.5 L -4.5 -4" {...stroke} />
+        <path d="M 4.5 -5.5 L 4.5 -4" {...stroke} />
+        <ellipse cx="0" cy="-4" rx="4.5" ry="1.2" {...stroke} />
+        {/* Body - tapering inward */}
+        <path d="M -4 -3
+                 Q -4 -1 -2.5 0
+                 Q -2 2 -2.5 4
+                 L 2.5 4
+                 Q 2 2 2.5 0
+                 Q 4 -1 4 -3 Z" {...stroke} />
+        {/* Base - wide platform */}
+        <ellipse cx="0" cy="5" rx="5.5" ry="1.4" {...stroke} />
+        <path d="M -5.5 5 L -5.5 7" {...stroke} />
+        <path d="M 5.5 5 L 5.5 7" {...stroke} />
+        <ellipse cx="0" cy="7" rx="5.5" ry="1.3" {...stroke} />
+        {/* Bottom */}
+        <ellipse cx="0" cy="8.5" rx="6.5" ry="1.5" {...stroke} />
       </svg>
     );
   }
 
+  // === GROWTH: descending bars + downward arrow + golf ball ===
+  // (per reference image: bars going down with arrow, ball top-right)
+  if (type === 'growth') {
+    return (
+      <svg {...props}>
+        {/* Golf ball top-right */}
+        <circle cx="8" cy="-8" r="5" {...stroke} />
+        {/* Ball dimples */}
+        <circle cx="6.5" cy="-9.5" r="0.4" fill={color} opacity="0.7"/>
+        <circle cx="8" cy="-10" r="0.4" fill={color} opacity="0.7"/>
+        <circle cx="9.5" cy="-9.5" r="0.4" fill={color} opacity="0.7"/>
+        <circle cx="6" cy="-8" r="0.4" fill={color} opacity="0.7"/>
+        <circle cx="8" cy="-8" r="0.4" fill={color} opacity="0.7"/>
+        <circle cx="10" cy="-8" r="0.4" fill={color} opacity="0.7"/>
+        <circle cx="6.5" cy="-6.5" r="0.4" fill={color} opacity="0.7"/>
+        <circle cx="8" cy="-6" r="0.4" fill={color} opacity="0.7"/>
+        <circle cx="9.5" cy="-6.5" r="0.4" fill={color} opacity="0.7"/>
+
+        {/* Descending bars - 4 bars, each smaller */}
+        <rect x="-12" y="-2" width="3" height="11" {...stroke} />
+        <rect x="-7.5" y="0" width="3" height="9" {...stroke} />
+        <rect x="-3" y="3" width="3" height="6" {...stroke} />
+        <rect x="1.5" y="5" width="3" height="4" {...stroke} />
+
+        {/* Baseline */}
+        <line x1="-13" y1="9" x2="9" y2="9" {...stroke} />
+
+        {/* Descending arrow line going through bars */}
+        <polyline points="-11,-4 -7,-2 -3,1 3,4 7,6"
+                  {...stroke} strokeWidth="1.3" />
+        {/* Arrowhead */}
+        <polyline points="5.5,7 7.5,6.3 6.8,4.3" {...stroke} strokeWidth="1.3" />
+      </svg>
+    );
+  }
+
+  // === PRACTICE: golfer in swing finish (cleaner silhouette) ===
   if (type === 'practice') {
-    // Golfer silhouette at top of backswing - cleaner, head visible
     return (
       <svg {...props}>
+        {/* Cap */}
+        <path d="M -2 -9 L 2.5 -9 L 3 -8 L -2.5 -8 Z" {...stroke} />
+        <path d="M 0 -10 L 2.5 -9 L 3 -10" {...stroke} />
         {/* Head */}
-        <circle cx="0" cy="-10" r="2.4" fill={color} opacity="0.95" />
-        {/* Body/torso */}
-        <path d="M -3 -7
-                 L 3 -7
-                 L 3.5 -1
-                 L -3.5 -1 Z"
-              fill={color} opacity="0.95" />
-        {/* Both arms raised together holding club */}
-        <path d="M -3 -7
-                 Q -5 -9 -5 -11
-                 L -3 -11.5
-                 L 3 -11.5
-                 L 5 -11
-                 Q 5 -9 3 -7 Z"
-              fill={color} opacity="0.95" />
-        {/* Club shaft going up and back */}
-        <line x1="0" y1="-12" x2="-10" y2="-14"
-              stroke={color} strokeWidth="1.4" strokeLinecap="round" opacity="0.95" />
+        <circle cx="0" cy="-7" r="2" {...stroke} />
+        {/* Body - swing finish (twisted) */}
+        <path d="M -1 -5
+                 Q -2 -3 -1 0
+                 Q 0.5 2 0 4
+                 L 1.5 4
+                 Q 2.5 2 3 0
+                 Q 3.5 -3 2 -5 Z" {...stroke} />
+        {/* Front arm raised holding club */}
+        <path d="M 2 -5
+                 Q 5 -7 7 -10
+                 L 8 -9.5
+                 Q 6 -6 3 -4 Z" {...stroke} />
+        {/* Club shaft */}
+        <line x1="7.5" y1="-10" x2="3" y2="-13" {...stroke} strokeWidth="1.2" />
         {/* Club head */}
-        <ellipse cx="-10.5" cy="-14" rx="2.8" ry="1.3"
-                 fill={color} opacity="0.95"
-                 transform="rotate(-12 -10.5 -14)" />
+        <ellipse cx="2.5" cy="-13" rx="1.4" ry="0.8" {...stroke}
+                 transform="rotate(-35 2.5 -13)" />
+        {/* Back arm folded across */}
+        <path d="M -1 -5
+                 Q -3 -3 -3.5 -1
+                 L -2 -0.5
+                 Q -1 -2 0 -4 Z" {...stroke} />
         {/* Hips */}
-        <rect x="-3.5" y="-1" width="7" height="3" fill={color} opacity="0.95" />
-        {/* Legs - slight stance */}
-        <path d="M -3.5 2
-                 L -0.5 2
-                 L -1.5 12
-                 L -4 12 Z"
-              fill={color} opacity="0.95" />
-        <path d="M 0.5 2
-                 L 3.5 2
-                 L 4 12
-                 L 1.5 12 Z"
-              fill={color} opacity="0.95" />
-        {/* Ball on tee at base */}
-        <circle cx="9" cy="11.5" r="1.1" fill={color} opacity="0.85" />
-        <line x1="9" y1="12.5" x2="9" y2="13.5" stroke={color} strokeWidth="0.8" opacity="0.85" />
+        <rect x="-1.5" y="4" width="4" height="2" {...stroke} />
+        {/* Front leg straight */}
+        <path d="M -1 6 L 1 6 L 0.5 12 L -2 12 Z" {...stroke} />
+        {/* Back leg - knee bent inward (swing finish) */}
+        <path d="M 1 6 L 3 6 L 4 12 L 2 12 Z" {...stroke} />
+        {/* Ground line */}
+        <line x1="-5" y1="12" x2="6" y2="12" {...stroke} strokeWidth="0.8" />
       </svg>
     );
   }
 
+  // === ROUND: rectangle with course name + par/over par + total score ===
   if (type === 'round') {
-    // The score number itself - dynamic based on the latest round
-    const score = scoreNumber !== undefined ? scoreNumber : 102;
-    const scoreStr = String(score);
-    // Adapt font size based on digit count, scaled for the 32x32 viewBox
-    const fontSize = scoreStr.length === 2 ? 18 : scoreStr.length === 3 ? 13 : 10;
+    const r = roundData || {};
+    const courseShort = r.courseShort || 'COURSE';
+    const par = r.coursePar !== undefined ? r.coursePar : 72;
+    const overPar = r.overPar !== undefined ? r.overPar : 30;
+    const overParStr = overPar > 0 ? `+${overPar}` : `${overPar}`;
+    const grossScore = r.grossScore !== undefined ? r.grossScore : 102;
+    const scoreStr = String(grossScore);
+    const scoreFontSize = scoreStr.length === 2 ? 11 : scoreStr.length === 3 ? 9 : 7;
+
+    // Adapt course name font-size to length
+    const nameLen = courseShort.length;
+    const nameFontSize = nameLen <= 5 ? 3.8 : nameLen <= 7 ? 3.2 : nameLen <= 9 ? 2.7 : 2.3;
+    const nameSpacing = nameLen <= 5 ? '0.2em' : nameLen <= 7 ? '0.15em' : '0.05em';
+
     return (
       <svg {...props}>
-        {/* Small flag in upper-left corner */}
-        <line x1="-12" y1="-12" x2="-12" y2="-2" stroke={color} strokeWidth="1" opacity="0.55" strokeLinecap="round"/>
-        <path d="M -12 -11 L -7 -9.5 L -12 -8 Z" fill={color} opacity="0.55" />
-        {/* The score - centered, smaller, with proper baseline */}
-        <text x="2.5" y="5"
-              textAnchor="middle"
-              dominantBaseline="middle"
+        {/* Outer rectangle */}
+        <rect x="-12" y="-12" width="24" height="22" rx="1.5" {...stroke} />
+
+        {/* Course name - top center */}
+        <text x="0" y="-7.5" textAnchor="middle"
+              fill={color}
+              fontFamily="'Inter', sans-serif"
+              fontSize={nameFontSize}
+              fontWeight="600"
+              letterSpacing={nameSpacing}>
+          {courseShort}
+        </text>
+
+        {/* Horizontal divider */}
+        <line x1="-12" y1="-5.5" x2="12" y2="-5.5" {...stroke} strokeWidth="0.8" />
+
+        {/* Vertical divider (top portion only) */}
+        <line x1="0" y1="-5.5" x2="0" y2="-1.5" {...stroke} strokeWidth="0.8" />
+
+        {/* PAR (top-left) */}
+        <text x="-6" y="-2.5" textAnchor="middle"
               fill={color}
               fontFamily="Georgia, serif"
               fontStyle="italic"
-              fontSize={fontSize}
+              fontSize="4.5"
+              fontWeight="500">
+          {par}
+        </text>
+
+        {/* OVER PAR (top-right) */}
+        <text x="6" y="-2.5" textAnchor="middle"
+              fill={color}
+              fontFamily="Georgia, serif"
+              fontStyle="italic"
+              fontSize="4.5"
+              fontWeight="500">
+          {overParStr}
+        </text>
+
+        {/* Horizontal divider below top row */}
+        <line x1="-12" y1="-1.5" x2="12" y2="-1.5" {...stroke} strokeWidth="0.8" />
+
+        {/* TOTAL SCORE - big, centered */}
+        <text x="0" y="7"
+              textAnchor="middle"
+              fill={color}
+              fontFamily="Georgia, serif"
+              fontStyle="italic"
+              fontSize={scoreFontSize}
               fontWeight="600">
           {scoreStr}
         </text>
@@ -1984,13 +2130,15 @@ function SectionIcon({ type, color, size = 28, scoreNumber }) {
     );
   }
 
+  // === Practice sub-icons (calendar, indoor, outdoor, log) ===
+  // These remain from earlier - kept for sub-section views
   if (type === 'calendar') {
     return (
       <svg {...props}>
-        <rect x="-11" y="-7" width="22" height="20" rx="1.5" stroke={color} strokeWidth="1.1" opacity="0.9" fill="none" />
-        <line x1="-11" y1="-2" x2="11" y2="-2" stroke={color} strokeWidth="1.1" opacity="0.9" />
-        <line x1="-6" y1="-10" x2="-6" y2="-5" stroke={color} strokeWidth="1.4" opacity="0.95" strokeLinecap="round" />
-        <line x1="6" y1="-10" x2="6" y2="-5" stroke={color} strokeWidth="1.4" opacity="0.95" strokeLinecap="round" />
+        <rect x="-11" y="-7" width="22" height="20" rx="1.5" {...stroke} />
+        <line x1="-11" y1="-2" x2="11" y2="-2" {...stroke} />
+        <line x1="-6" y1="-10" x2="-6" y2="-5" {...stroke} strokeWidth="1.4" />
+        <line x1="6" y1="-10" x2="6" y2="-5" {...stroke} strokeWidth="1.4" />
         <circle cx="-5" cy="4" r="1.4" fill={color} opacity="0.7" />
         <circle cx="5" cy="8" r="1.4" fill={color} opacity="0.7" />
       </svg>
@@ -1998,14 +2146,13 @@ function SectionIcon({ type, color, size = 28, scoreNumber }) {
   }
 
   if (type === 'indoor') {
-    // Trackman monitor
     return (
       <svg {...props}>
-        <rect x="-12" y="-9" width="24" height="16" rx="1.5" stroke={color} strokeWidth="1.1" opacity="0.95" fill="none" />
-        <line x1="-4" y1="7" x2="-4" y2="11" stroke={color} strokeWidth="1" opacity="0.95" />
-        <line x1="4" y1="7" x2="4" y2="11" stroke={color} strokeWidth="1" opacity="0.95" />
-        <line x1="-8" y1="11" x2="8" y2="11" stroke={color} strokeWidth="1" opacity="0.95" strokeLinecap="round" />
-        <path d="M -8 3 Q -4 -4 0 -2 Q 4 0 8 -6" stroke={color} strokeWidth="1" opacity="0.85" fill="none" strokeLinecap="round" />
+        <rect x="-12" y="-9" width="24" height="16" rx="1.5" {...stroke} />
+        <line x1="-4" y1="7" x2="-4" y2="11" {...stroke} />
+        <line x1="4" y1="7" x2="4" y2="11" {...stroke} />
+        <line x1="-8" y1="11" x2="8" y2="11" {...stroke} />
+        <path d="M -8 3 Q -4 -4 0 -2 Q 4 0 8 -6" {...stroke} strokeWidth="1" />
       </svg>
     );
   }
@@ -2013,12 +2160,12 @@ function SectionIcon({ type, color, size = 28, scoreNumber }) {
   if (type === 'outdoor') {
     return (
       <svg {...props}>
-        <circle cx="0" cy="-3" r="4.5" stroke={color} strokeWidth="1.1" opacity="0.95" fill="none" />
-        <line x1="0" y1="-12" x2="0" y2="-9.5" stroke={color} strokeWidth="1.1" opacity="0.95" strokeLinecap="round" />
-        <line x1="0" y1="3.5" x2="0" y2="6" stroke={color} strokeWidth="1.1" opacity="0.95" strokeLinecap="round" />
-        <line x1="-9" y1="-3" x2="-6.5" y2="-3" stroke={color} strokeWidth="1.1" opacity="0.95" strokeLinecap="round" />
-        <line x1="6.5" y1="-3" x2="9" y2="-3" stroke={color} strokeWidth="1.1" opacity="0.95" strokeLinecap="round" />
-        <path d="M -12 12 Q -8 8 -4 12 Q 0 8 4 12 Q 8 8 12 12" stroke={color} strokeWidth="1.1" opacity="0.95" fill="none" strokeLinecap="round" />
+        <circle cx="0" cy="-3" r="4.5" {...stroke} />
+        <line x1="0" y1="-12" x2="0" y2="-9.5" {...stroke} />
+        <line x1="0" y1="3.5" x2="0" y2="6" {...stroke} />
+        <line x1="-9" y1="-3" x2="-6.5" y2="-3" {...stroke} />
+        <line x1="6.5" y1="-3" x2="9" y2="-3" {...stroke} />
+        <path d="M -12 12 Q -8 8 -4 12 Q 0 8 4 12 Q 8 8 12 12" {...stroke} />
       </svg>
     );
   }
@@ -2026,101 +2173,423 @@ function SectionIcon({ type, color, size = 28, scoreNumber }) {
   if (type === 'log') {
     return (
       <svg {...props}>
-        <rect x="-10" y="-12" width="20" height="23" rx="1.5" stroke={color} strokeWidth="1.1" opacity="0.95" fill="none" />
-        <line x1="-6" y1="-6" x2="6" y2="-6" stroke={color} strokeWidth="0.9" opacity="0.7" />
-        <line x1="-6" y1="-2" x2="6" y2="-2" stroke={color} strokeWidth="0.9" opacity="0.7" />
-        <line x1="-6" y1="2" x2="2" y2="2" stroke={color} strokeWidth="0.9" opacity="0.7" />
-        <line x1="-6" y1="6" x2="4" y2="6" stroke={color} strokeWidth="0.9" opacity="0.7" />
+        <rect x="-10" y="-12" width="20" height="23" rx="1.5" {...stroke} />
+        <line x1="-6" y1="-6" x2="6" y2="-6" {...stroke} strokeWidth="0.9" opacity="0.7" />
+        <line x1="-6" y1="-2" x2="6" y2="-2" {...stroke} strokeWidth="0.9" opacity="0.7" />
+        <line x1="-6" y1="2" x2="2" y2="2" {...stroke} strokeWidth="0.9" opacity="0.7" />
+        <line x1="-6" y1="6" x2="4" y2="6" {...stroke} strokeWidth="0.9" opacity="0.7" />
       </svg>
     );
   }
+
   return null;
+}
+
+
+
+// ============================================================
+// NEW ROUND FORM
+// ============================================================
+
+// ============================================================
+// AREA ICONS — based on user reference (May 18, 2026)
+// Line-art style, each in its own color for distinction
+// ============================================================
+// ============================================================
+// NEW ROUND FORM - simplified: just course name + image
+// AI analysis will be added in next iteration (Anthropic API)
+// ============================================================
+function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
+  // Common Miami-area courses for quick suggestions
+  const courseSuggestions = [
+    'Miami Beach',
+    'Normandy',
+    'Crandon',
+    'Biltmore',
+    'Shores',
+    'Lakes',
+    'Doral',
+    'International Links'
+  ];
+
+  const [courseName, setCourseName] = useState('');
+  const [imagePreview, setImagePreview] = useState(null);
+  const [imageDataUrl, setImageDataUrl] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target.result;
+      setImagePreview(dataUrl);
+      setImageDataUrl(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = () => {
+    if (!courseName.trim() || !imageDataUrl) {
+      alert('Please enter the course name and upload the scorecard image.');
+      return;
+    }
+
+    const now = new Date();
+    const dateDisplay = now.toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric'
+    });
+
+    const newRound = {
+      courseShort: courseName.toUpperCase().trim(),
+      courseFull: courseName.trim(),
+      date: now.toISOString().split('T')[0],
+      dateDisplay: dateDisplay,
+      coursePar: 72,
+      overPar: 0, // Will be set when AI analysis runs (or manually edited later)
+      grossScore: 0,
+      netScore: null,
+      differential: null,
+      teeColor: 'Blue',
+      yards: null,
+      slope: null,
+      courseHandicap: 19,
+      image: imageDataUrl,
+      notes: '',
+      aiAnalysis: null // Reserved for future API integration
+    };
+    onSave(newRound);
+  };
+
+  const filteredSuggestions = courseSuggestions.filter(s =>
+    s.toLowerCase().includes(courseName.toLowerCase()) && s.toLowerCase() !== courseName.toLowerCase()
+  );
+
+  const inputBase = {
+    width: '100%', background: 'rgba(0,0,0,0.3)',
+    border: `1px solid ${C.border}`, borderRadius: '4px',
+    padding: '12px 14px', color: C.text,
+    fontFamily: sans, fontSize: '15px',
+    fontWeight: 300, outline: 'none', boxSizing: 'border-box'
+  };
+  const labelStyle = {
+    fontSize: '10px', letterSpacing: '0.3em',
+    textTransform: 'uppercase', color: C.accent,
+    fontFamily: sans, marginBottom: '8px',
+    fontWeight: 500, display: 'block'
+  };
+
+  return (
+    <div style={{ animation: 'fadeIn 0.4s' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '6px' }}>
+        <div style={{
+          fontSize: 'clamp(28px, 6vw, 38px)', fontStyle: 'italic',
+          lineHeight: 1.05, flex: 1
+        }}>Log New Round</div>
+      </div>
+      <div style={{
+        fontSize: '11px', letterSpacing: '0.3em',
+        textTransform: 'uppercase', opacity: 0.6,
+        fontFamily: sans, fontWeight: 500
+      }}>Course + scorecard. AI analysis coming next.</div>
+      <div style={{ width: '40px', height: '2px', background: C.accent, marginTop: '18px', opacity: 0.7, marginBottom: '28px' }} />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+
+        {/* Course Name with autocomplete */}
+        <div>
+          <label style={labelStyle}>Course Name</label>
+          <div style={{ position: 'relative' }}>
+            <input type="text"
+              placeholder="Normandy"
+              value={courseName}
+              onChange={(e) => { setCourseName(e.target.value); setShowSuggestions(true); }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              style={inputBase} />
+
+            {/* Suggestion dropdown */}
+            {showSuggestions && filteredSuggestions.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 4px)',
+                left: 0, right: 0,
+                background: '#173d63',
+                border: `1px solid ${C.accent}60`,
+                borderRadius: '6px',
+                overflow: 'hidden',
+                zIndex: 10,
+                boxShadow: '0 6px 24px rgba(0,0,0,0.5)'
+              }}>
+                {filteredSuggestions.map((s, i) => (
+                  <div key={i}
+                    onMouseDown={() => { setCourseName(s); setShowSuggestions(false); }}
+                    style={{
+                      padding: '11px 14px',
+                      fontFamily: sans, fontSize: '14px',
+                      color: C.text, cursor: 'pointer',
+                      borderBottom: i < filteredSuggestions.length - 1 ? `1px solid ${C.border}` : 'none',
+                      transition: 'background 0.15s'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.background = 'rgba(163,217,85,0.1)'}
+                    onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    {s}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ fontFamily: sans, fontSize: '11px', opacity: 0.5, marginTop: '6px' }}>
+            Will show in uppercase on the round card (e.g. NORMANDY)
+          </div>
+        </div>
+
+        {/* Image upload */}
+        <div>
+          <label style={labelStyle}>Scorecard Image</label>
+          <div style={{
+            border: `1px dashed ${C.accent}70`,
+            borderRadius: '8px',
+            padding: '24px',
+            textAlign: 'center',
+            cursor: 'pointer',
+            position: 'relative',
+            background: imagePreview ? 'transparent' : 'rgba(0,0,0,0.18)',
+            transition: 'all 0.2s'
+          }}>
+            <input type="file" accept="image/*"
+              onChange={handleImageUpload}
+              style={{
+                position: 'absolute', inset: 0,
+                opacity: 0, cursor: 'pointer'
+              }} />
+            {imagePreview ? (
+              <>
+                <img src={imagePreview} alt="Scorecard preview"
+                  style={{ maxWidth: '100%', borderRadius: '4px', display: 'block', margin: '0 auto' }} />
+                <div style={{
+                  marginTop: '12px', fontSize: '11px',
+                  color: C.accent, fontFamily: sans,
+                  letterSpacing: '0.2em', textTransform: 'uppercase',
+                  fontWeight: 500
+                }}>
+                  Tap to change image
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{
+                  fontSize: '32px', color: C.accent,
+                  opacity: 0.7, marginBottom: '8px'
+                }}>📸</div>
+                <div style={{
+                  fontFamily: sans, fontSize: '14px',
+                  color: C.accent, fontWeight: 500
+                }}>
+                  Tap to upload scorecard
+                </div>
+                <div style={{
+                  fontFamily: sans, fontSize: '11px',
+                  opacity: 0.5, marginTop: '4px'
+                }}>
+                  PNG or JPG from your camera roll
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Notice about AI analysis */}
+        <div style={{
+          background: 'rgba(163,217,85,0.06)',
+          border: `1px solid ${C.accent}30`,
+          borderRadius: '8px',
+          padding: '14px 16px',
+          display: 'flex', alignItems: 'flex-start', gap: '12px'
+        }}>
+          <div style={{ fontSize: '20px' }}>✨</div>
+          <div style={{
+            fontFamily: sans, fontSize: '12px',
+            fontWeight: 300, lineHeight: 1.6, opacity: 0.85
+          }}>
+            AI Analysis will be added in the next update. For now, the round will be saved with the image and you'll see it on the home card.
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+          <button onClick={handleSave} style={{
+            flex: 1, background: C.accent, border: 'none',
+            color: C.bg, padding: '14px',
+            fontFamily: sans, fontSize: '12px',
+            letterSpacing: '0.2em', textTransform: 'uppercase',
+            fontWeight: 600, cursor: 'pointer', borderRadius: '6px'
+          }}>Save Round</button>
+          <button onClick={onCancel} style={{
+            background: 'transparent',
+            border: `1px solid ${C.border}`,
+            color: C.text, padding: '14px 22px',
+            fontFamily: sans, fontSize: '12px',
+            letterSpacing: '0.2em', textTransform: 'uppercase',
+            cursor: 'pointer', borderRadius: '6px', opacity: 0.7
+          }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function AreaIcon({ type, color, size = 30 }) {
   const props = { width: size, height: size, viewBox: '-16 -16 32 32', fill: 'none' };
+  const stroke = { stroke: color, strokeWidth: 1.2, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' };
 
+  // 1. TEMPO: Metronome
   if (type === 'tempo') {
     return (
       <svg {...props}>
-        <path d="M -7 11 L -4 -9 L 4 -9 L 7 11 Z" stroke={color} strokeWidth="1.2" opacity="0.95" fill="none" strokeLinejoin="round" />
-        <line x1="-7" y1="11" x2="7" y2="11" stroke={color} strokeWidth="0.9" opacity="0.7" />
-        <line x1="0" y1="9" x2="3" y2="-10" stroke={color} strokeWidth="1.2" opacity="0.95" strokeLinecap="round" />
-        <circle cx="3" cy="-10" r="1.4" fill={color} />
+        {/* Triangular body */}
+        <path d="M -10 12 L -5 -12 L 5 -12 L 10 12 Z" {...stroke} />
+        {/* Base line */}
+        <line x1="-12" y1="13" x2="12" y2="13" {...stroke} />
+        {/* Feet */}
+        <line x1="-10" y1="13" x2="-10" y2="14.5" {...stroke} />
+        <line x1="10" y1="13" x2="10" y2="14.5" {...stroke} />
+        {/* Vertical reference line with ticks (dashed) */}
+        <line x1="0" y1="-8" x2="0" y2="9"
+              stroke={color} strokeWidth="0.8" fill="none"
+              strokeDasharray="1.5 1.2" strokeLinecap="round" />
+        {/* Pendulum rod */}
+        <line x1="0" y1="9" x2="6" y2="-9" {...stroke} />
+        {/* Pendulum weight */}
+        <circle cx="6" cy="-9" r="1.6" {...stroke} />
+        {/* Pivot point */}
+        <circle cx="0" cy="9" r="1.2" stroke={color} strokeWidth="1.1" fill="none" />
       </svg>
     );
   }
+
+  // 2. ELEVATED CHIP AND PITCH: high arc to flag in hole
   if (type === 'elevated') {
     return (
       <svg {...props}>
-        <path d="M -11 9 Q 0 -13 11 9" stroke={color} strokeWidth="1.3" opacity="0.95" fill="none" strokeDasharray="2 2" strokeLinecap="round" />
-        <circle cx="-11" cy="9" r="1.6" fill={color} />
-        <circle cx="11" cy="9" r="1.6" fill="none" stroke={color} strokeWidth="1" opacity="0.7" />
-        <line x1="-13" y1="11" x2="13" y2="11" stroke={color} strokeWidth="0.7" opacity="0.6" />
+        {/* Ball start */}
+        <circle cx="-10" cy="6" r="1.4" {...stroke} />
+        {/* High arc trajectory (dashed) */}
+        <path d="M -10 6 Q -2 -12 6 6"
+              stroke={color} strokeWidth="1.3" fill="none"
+              strokeDasharray="1.8 1.5" strokeLinecap="round" />
+        {/* Hole ellipse */}
+        <ellipse cx="6" cy="7" rx="3" ry="0.8" {...stroke} strokeWidth="1.1" />
+        {/* Flag pole */}
+        <line x1="6" y1="6" x2="6" y2="-6" {...stroke} />
+        {/* Flag */}
+        <path d="M 6 -6 L 12 -4.5 L 6 -3 Z" {...stroke} />
       </svg>
     );
   }
+
+  // 3. CHIP & RUN: ball with dimples + low arc + roll to flag
   if (type === 'chiprun') {
     return (
       <svg {...props}>
-        <path d="M -11 6 Q -7 -4 -2 6" stroke={color} strokeWidth="1.3" opacity="0.95" fill="none" strokeDasharray="2 2" strokeLinecap="round" />
-        <path d="M -2 6 Q 2 6 11 6" stroke={color} strokeWidth="1.3" opacity="0.65" fill="none" strokeLinecap="round" />
-        <circle cx="-11" cy="6" r="1.5" fill={color} />
-        <circle cx="11" cy="6" r="1.5" fill="none" stroke={color} strokeWidth="1" opacity="0.65" />
-        <line x1="-13" y1="8.5" x2="13" y2="8.5" stroke={color} strokeWidth="0.7" opacity="0.6" />
+        {/* Ball */}
+        <circle cx="-11" cy="3" r="2" {...stroke} />
+        {/* Dimples */}
+        <circle cx="-11.7" cy="2.3" r="0.25" fill={color} />
+        <circle cx="-11" cy="2.3" r="0.25" fill={color} />
+        <circle cx="-10.3" cy="2.3" r="0.25" fill={color} />
+        <circle cx="-11.7" cy="3" r="0.25" fill={color} />
+        <circle cx="-11" cy="3" r="0.25" fill={color} />
+        <circle cx="-10.3" cy="3" r="0.25" fill={color} />
+        <circle cx="-11.7" cy="3.7" r="0.25" fill={color} />
+        <circle cx="-11" cy="3.7" r="0.25" fill={color} />
+        <circle cx="-10.3" cy="3.7" r="0.25" fill={color} />
+        {/* Low arc + run trajectory */}
+        <path d="M -9 3 Q -5 -1 -1 2 Q 2 4 5 4 L 7 4"
+              stroke={color} strokeWidth="1.3" fill="none"
+              strokeDasharray="1.5 1.5" strokeLinecap="round" />
+        {/* Hole */}
+        <ellipse cx="7" cy="5" rx="2.5" ry="0.7" {...stroke} strokeWidth="1.1" />
+        {/* Flag pole */}
+        <line x1="7" y1="4" x2="7" y2="-8" {...stroke} />
+        {/* Flag */}
+        <path d="M 7 -8 L 13 -6.5 L 7 -5 Z" {...stroke} />
       </svg>
     );
   }
+
+  // 4. TEE SHOT: ball with dimples on tee
   if (type === 'tee') {
     return (
       <svg {...props}>
-        <circle cx="0" cy="-6" r="5.5" fill="none" stroke={color} strokeWidth="1.1" opacity="0.95" />
-        <circle cx="-2.2" cy="-8" r="0.5" fill={color} opacity="0.75" />
-        <circle cx="2.2" cy="-8" r="0.5" fill={color} opacity="0.75" />
-        <circle cx="0" cy="-6" r="0.5" fill={color} opacity="0.75" />
-        <circle cx="-2.2" cy="-4" r="0.5" fill={color} opacity="0.75" />
-        <circle cx="2.2" cy="-4" r="0.5" fill={color} opacity="0.75" />
-        <path d="M -2.5 0 L 2.5 0 L 1.2 10 L -1.2 10 Z" fill={color} opacity="0.9" />
-        <line x1="-13" y1="13" x2="13" y2="13" stroke={color} strokeWidth="0.7" opacity="0.6" />
+        {/* Ball */}
+        <circle cx="0" cy="-5" r="4.5" {...stroke} />
+        {/* Dimples grid */}
+        <circle cx="-1.8" cy="-6.5" r="0.3" fill={color} />
+        <circle cx="0" cy="-7" r="0.3" fill={color} />
+        <circle cx="1.8" cy="-6.5" r="0.3" fill={color} />
+        <circle cx="-2.5" cy="-5" r="0.3" fill={color} />
+        <circle cx="-0.8" cy="-5" r="0.3" fill={color} />
+        <circle cx="0.8" cy="-5" r="0.3" fill={color} />
+        <circle cx="2.5" cy="-5" r="0.3" fill={color} />
+        <circle cx="-1.8" cy="-3.5" r="0.3" fill={color} />
+        <circle cx="0" cy="-3" r="0.3" fill={color} />
+        <circle cx="1.8" cy="-3.5" r="0.3" fill={color} />
+        {/* Tee cup */}
+        <path d="M -2 -0.5 L 2 -0.5 L 1.3 1 L -1.3 1 Z" {...stroke} />
+        {/* Tee stem */}
+        <line x1="0" y1="1" x2="0" y2="10" {...stroke} />
+        {/* Ground */}
+        <line x1="-7" y1="10" x2="7" y2="10" stroke={color} strokeWidth="1" fill="none" strokeLinecap="round" />
       </svg>
     );
   }
+
+  // 5. WEDGE: target rings with flag in center
   if (type === 'wedge') {
     return (
       <svg {...props}>
-        <circle cx="0" cy="0" r="11" fill="none" stroke={color} strokeWidth="0.9" opacity="0.4" />
-        <circle cx="0" cy="0" r="7.5" fill="none" stroke={color} strokeWidth="0.9" opacity="0.6" />
-        <circle cx="0" cy="0" r="4" fill="none" stroke={color} strokeWidth="0.9" opacity="0.85" />
-        <line x1="0" y1="0" x2="0" y2="-10" stroke={color} strokeWidth="1.2" opacity="0.95" />
-        <path d="M 0 -9 L 6 -7 L 0 -5 Z" fill={color} opacity="0.9" />
-        <circle cx="0" cy="0" r="1.4" fill={color} />
+        {/* Outer target ring (ellipse - perspective) */}
+        <ellipse cx="0" cy="4" rx="11" ry="3.5" {...stroke} />
+        {/* Middle ring */}
+        <ellipse cx="0" cy="4" rx="7" ry="2.3" {...stroke} />
+        {/* Inner ring */}
+        <ellipse cx="0" cy="4" rx="3.5" ry="1.2" {...stroke} />
+        {/* Center dot */}
+        <circle cx="0" cy="4" r="0.9" fill={color} />
+        {/* Flag pole rising from center */}
+        <line x1="0" y1="4" x2="0" y2="-8" {...stroke} strokeWidth="1.3" />
+        {/* Flag (filled) */}
+        <path d="M 0 -8 L 6 -6.5 L 0 -5 Z" fill={color} stroke={color} strokeWidth="1.2" strokeLinejoin="round" />
       </svg>
     );
   }
+
+  // 6. PRE-SHOT ROUTINE: numbered circles 1, 2, 3 with arrows
   if (type === 'preshot') {
-    // Vertical 1 → 2 → 3 sequence with arrows, like the reference image
     return (
       <svg {...props}>
-        {/* Step 1 - top */}
-        <circle cx="-9" cy="-9" r="4.5" fill="none" stroke={color} strokeWidth="1.4" opacity="0.95" />
-        <text x="-9" y="-6.5" textAnchor="middle" fill={color} fontSize="7" fontWeight="700" fontFamily="'Inter', sans-serif">1</text>
-        {/* Arrow 1 → */}
-        <line x1="-3.5" y1="-9" x2="3" y2="-9" stroke={color} strokeWidth="1.5" opacity="0.95" strokeLinecap="round" />
-        <polyline points="1.5,-10.5 3.5,-9 1.5,-7.5" fill="none" stroke={color} strokeWidth="1.5" opacity="0.95" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Step 1 */}
+        <circle cx="-8" cy="-7" r="2.5" {...stroke} />
+        <text x="-8" y="-5.7" textAnchor="middle" fill={color}
+              fontFamily="'Inter', sans-serif" fontSize="3" fontWeight="700">1</text>
+        <line x1="-4.5" y1="-7" x2="3" y2="-7" {...stroke} strokeWidth="1.3" />
+        <polyline points="2,-8.5 3.5,-7 2,-5.5" {...stroke} strokeWidth="1.3" />
 
-        {/* Step 2 - middle */}
-        <circle cx="-9" cy="0.5" r="4.5" fill="none" stroke={color} strokeWidth="1.4" opacity="0.95" />
-        <text x="-9" y="3" textAnchor="middle" fill={color} fontSize="7" fontWeight="700" fontFamily="'Inter', sans-serif">2</text>
-        {/* Arrow 2 → (longer) */}
-        <line x1="-3.5" y1="0.5" x2="6" y2="0.5" stroke={color} strokeWidth="1.5" opacity="0.95" strokeLinecap="round" />
-        <polyline points="4.5,-1 6.5,0.5 4.5,2" fill="none" stroke={color} strokeWidth="1.5" opacity="0.95" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Step 2 */}
+        <circle cx="-8" cy="0" r="2.5" {...stroke} />
+        <text x="-8" y="1.3" textAnchor="middle" fill={color}
+              fontFamily="'Inter', sans-serif" fontSize="3" fontWeight="700">2</text>
+        <line x1="-4.5" y1="0" x2="5" y2="0" {...stroke} strokeWidth="1.3" />
+        <polyline points="4,-1.5 5.5,0 4,1.5" {...stroke} strokeWidth="1.3" />
 
-        {/* Step 3 - bottom (filled - commit) */}
-        <circle cx="-9" cy="10" r="4.5" fill={color} opacity="0.95" />
-        <text x="-9" y="12.5" textAnchor="middle" fill="#0e2a47" fontSize="7" fontWeight="700" fontFamily="'Inter', sans-serif">3</text>
-        {/* Arrow 3 → (longest, accent) */}
-        <line x1="-3.5" y1="10" x2="9" y2="10" stroke={color} strokeWidth="2" opacity="1" strokeLinecap="round" />
-        <polyline points="7.5,8 10,10 7.5,12" fill="none" stroke={color} strokeWidth="2" opacity="1" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Step 3 */}
+        <circle cx="-8" cy="7" r="2.5" {...stroke} />
+        <text x="-8" y="8.3" textAnchor="middle" fill={color}
+              fontFamily="'Inter', sans-serif" fontSize="3" fontWeight="700">3</text>
+        <line x1="-4.5" y1="7" x2="7" y2="7" {...stroke} strokeWidth="1.3" />
+        <polyline points="6,5.5 7.5,7 6,8.5" {...stroke} strokeWidth="1.3" />
       </svg>
     );
   }
