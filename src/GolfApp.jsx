@@ -389,9 +389,8 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
       background: `linear-gradient(180deg, ${C.bg2} 0%, ${C.bg} 60%)`,
       fontFamily: serif,
       color: C.text,
-      padding: '16px 16px 24px',
+      padding: '16px 16px 16px',
       position: 'relative',
-      minHeight: '100vh',
       boxSizing: 'border-box'
     }}>
       {/* Subtle grain texture */}
@@ -1347,7 +1346,25 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap');
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-        body { margin: 0; background: ${C.bg}; }
+
+        /* Lock the page so iOS doesn't rubber-band when content fits */
+        html, body {
+          margin: 0;
+          padding: 0;
+          background: ${C.bg};
+          overscroll-behavior: none;
+          -webkit-overflow-scrolling: auto;
+        }
+        html {
+          height: 100%;
+        }
+        body {
+          min-height: 100%;
+        }
+        #root {
+          background: ${C.bg};
+        }
+
         textarea:focus, input:focus, select:focus { border-color: ${C.accent}80 !important; }
         input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.85); cursor: pointer; }
         /* Hide scrollbars but keep scrolling */
@@ -1886,15 +1903,19 @@ function BookIcon({ C, size = 24 }) {
 // SECTION ICONS — line-art style, lime accent
 // Based on user reference image (May 18, 2026)
 // ============================================================
+// ============================================================
+// SECTION ICONS — final set from user reference (May 18, 2026)
+// All in lime green, line-art style
+// ============================================================
 function SectionIcon({ type, color, size = 28, scoreNumber, roundData }) {
   const props = { width: size, height: size, viewBox: '-16 -16 32 32', fill: 'none' };
   const stroke = { stroke: color, strokeWidth: 1.1, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' };
 
-  // === MANTRA: meditation figure with lotus petals + aura rays ===
+  // ===== MANTRA: meditation figure with aura rays + lotus petals =====
   if (type === 'mantra') {
     return (
       <svg {...props}>
-        {/* Aura rays (top) */}
+        {/* Aura rays */}
         <line x1="0" y1="-15" x2="0" y2="-13" {...stroke} />
         <line x1="-5" y1="-13" x2="-4" y2="-11.5" {...stroke} />
         <line x1="5" y1="-13" x2="4" y2="-11.5" {...stroke} />
@@ -1902,227 +1923,150 @@ function SectionIcon({ type, color, size = 28, scoreNumber, roundData }) {
         <line x1="8" y1="-10" x2="6.5" y2="-9" {...stroke} />
         {/* Head */}
         <circle cx="0" cy="-7.5" r="2.4" {...stroke} />
-        {/* Torso/body with hands in prayer */}
-        <path d="M -3.5 -2
-                 Q -4 -5 -2 -5
-                 L -0.5 -3
-                 L 0 -1
-                 L 0.5 -3
-                 L 2 -5
-                 Q 4 -5 3.5 -2
-                 Q 3.5 1 2 2.5
-                 L -2 2.5
-                 Q -3.5 1 -3.5 -2 Z"
-              {...stroke} />
-        {/* Lotus base - crossed legs */}
-        <path d="M -3 2.5
-                 Q -6 4 -7 6
-                 Q -5 9 -2 8
-                 Q 0 7 2 8
-                 Q 5 9 7 6
-                 Q 6 4 3 2.5
-                 Z" {...stroke} />
-        {/* Lotus petals - left */}
-        <path d="M -7 5
-                 Q -11 5 -12 8
-                 Q -10 10 -8 8 Z" {...stroke} />
-        {/* Lotus petals - right */}
-        <path d="M 7 5
-                 Q 11 5 12 8
-                 Q 10 10 8 8 Z" {...stroke} />
-        {/* Lotus petals - outer left */}
-        <path d="M -10 7
-                 Q -13 9 -12 11
-                 Q -10 11 -8 9 Z" {...stroke} />
-        {/* Lotus petals - outer right */}
-        <path d="M 10 7
-                 Q 13 9 12 11
-                 Q 10 11 8 9 Z" {...stroke} />
+        {/* Body with hands in prayer */}
+        <path d="M -3.5 -2 Q -4 -5 -2 -5 L -0.5 -3 L 0 -1 L 0.5 -3 L 2 -5 Q 4 -5 3.5 -2 Q 3.5 1 2 2.5 L -2 2.5 Q -3.5 1 -3.5 -2 Z" {...stroke} />
+        {/* Crossed legs */}
+        <path d="M -3 2.5 Q -6 4 -7 6 Q -5 9 -2 8 Q 0 7 2 8 Q 5 9 7 6 Q 6 4 3 2.5 Z" {...stroke} />
+        {/* Lotus petals */}
+        <path d="M -7 5 Q -11 5 -12 8 Q -10 10 -8 8 Z" {...stroke} />
+        <path d="M 7 5 Q 11 5 12 8 Q 10 10 8 8 Z" {...stroke} />
+        <path d="M -10 7 Q -13 9 -12 11 Q -10 11 -8 9 Z" {...stroke} />
+        <path d="M 10 7 Q 13 9 12 11 Q 10 11 8 9 Z" {...stroke} />
       </svg>
     );
   }
 
-  // === STRATEGY: chess KING with cross on top ===
+  // ===== STRATEGY: chess KING with cross =====
   if (type === 'strategy') {
     return (
       <svg {...props}>
         {/* Cross on top */}
         <line x1="0" y1="-15" x2="0" y2="-11" {...stroke} strokeWidth="1.3" />
         <line x1="-1.5" y1="-13" x2="1.5" y2="-13" {...stroke} strokeWidth="1.3" />
-        {/* Crown - upper portion (a small dome with band) */}
+        {/* Crown - small dome */}
         <ellipse cx="0" cy="-9" rx="3.5" ry="1.5" {...stroke} />
         <path d="M -3.5 -9 L -3.5 -7" {...stroke} />
         <path d="M 3.5 -9 L 3.5 -7" {...stroke} />
         <ellipse cx="0" cy="-7" rx="3.5" ry="1.2" {...stroke} />
-        {/* Neck/collar band */}
+        {/* Collar */}
         <ellipse cx="0" cy="-5.5" rx="4.5" ry="1.3" {...stroke} />
         <path d="M -4.5 -5.5 L -4.5 -4" {...stroke} />
         <path d="M 4.5 -5.5 L 4.5 -4" {...stroke} />
         <ellipse cx="0" cy="-4" rx="4.5" ry="1.2" {...stroke} />
-        {/* Body - tapering inward */}
-        <path d="M -4 -3
-                 Q -4 -1 -2.5 0
-                 Q -2 2 -2.5 4
-                 L 2.5 4
-                 Q 2 2 2.5 0
-                 Q 4 -1 4 -3 Z" {...stroke} />
-        {/* Base - wide platform */}
+        {/* Body */}
+        <path d="M -4 -3 Q -4 -1 -2.5 0 Q -2 2 -2.5 4 L 2.5 4 Q 2 2 2.5 0 Q 4 -1 4 -3 Z" {...stroke} />
+        {/* Base */}
         <ellipse cx="0" cy="5" rx="5.5" ry="1.4" {...stroke} />
         <path d="M -5.5 5 L -5.5 7" {...stroke} />
         <path d="M 5.5 5 L 5.5 7" {...stroke} />
         <ellipse cx="0" cy="7" rx="5.5" ry="1.3" {...stroke} />
-        {/* Bottom */}
         <ellipse cx="0" cy="8.5" rx="6.5" ry="1.5" {...stroke} />
       </svg>
     );
   }
 
-  // === GROWTH: descending bars + downward arrow + golf ball ===
-  // (per reference image: bars going down with arrow, ball top-right)
+  // ===== GROWTH (Areas of Improvement): GOLF BAG with clubs sticking out =====
   if (type === 'growth') {
     return (
       <svg {...props}>
-        {/* Golf ball top-right */}
-        <circle cx="8" cy="-8" r="5" {...stroke} />
-        {/* Ball dimples */}
-        <circle cx="6.5" cy="-9.5" r="0.4" fill={color} opacity="0.7"/>
-        <circle cx="8" cy="-10" r="0.4" fill={color} opacity="0.7"/>
-        <circle cx="9.5" cy="-9.5" r="0.4" fill={color} opacity="0.7"/>
-        <circle cx="6" cy="-8" r="0.4" fill={color} opacity="0.7"/>
-        <circle cx="8" cy="-8" r="0.4" fill={color} opacity="0.7"/>
-        <circle cx="10" cy="-8" r="0.4" fill={color} opacity="0.7"/>
-        <circle cx="6.5" cy="-6.5" r="0.4" fill={color} opacity="0.7"/>
-        <circle cx="8" cy="-6" r="0.4" fill={color} opacity="0.7"/>
-        <circle cx="9.5" cy="-6.5" r="0.4" fill={color} opacity="0.7"/>
+        {/* Clubs sticking up out of the bag */}
+        {/* Club 1 (left, shortest) */}
+        <line x1="-3" y1="-3" x2="-4" y2="-11" {...stroke} strokeWidth="1.2" />
+        <path d="M -4.5 -11 Q -5.5 -12 -4 -12.5 Q -3 -12 -3.5 -11 Z" {...stroke} strokeWidth="1.1" />
+        {/* Club 2 (middle, tallest) */}
+        <line x1="-0.5" y1="-3" x2="-1" y2="-13" {...stroke} strokeWidth="1.2" />
+        <path d="M -1.5 -13 Q -2.5 -14 -1 -14.5 Q 0 -14 -0.5 -13 Z" {...stroke} strokeWidth="1.1" />
+        {/* Club 3 (right, medium) */}
+        <line x1="2" y1="-3" x2="2.5" y2="-12" {...stroke} strokeWidth="1.2" />
+        <path d="M 2 -12 Q 1 -13 2.5 -13.5 Q 3.5 -13 3 -12 Z" {...stroke} strokeWidth="1.1" />
+        {/* Club 4 (rightmost, putter style) */}
+        <line x1="4.5" y1="-3" x2="5" y2="-10" {...stroke} strokeWidth="1.2" />
+        <path d="M 4 -10 L 6 -10 L 6 -11 L 4 -11 Z" {...stroke} strokeWidth="1.1" />
 
-        {/* Descending bars - 4 bars, each smaller */}
-        <rect x="-12" y="-2" width="3" height="11" {...stroke} />
-        <rect x="-7.5" y="0" width="3" height="9" {...stroke} />
-        <rect x="-3" y="3" width="3" height="6" {...stroke} />
-        <rect x="1.5" y="5" width="3" height="4" {...stroke} />
+        {/* Bag body - main rectangular tube */}
+        <path d="M -6 -3
+                 L 6 -3
+                 L 7 0
+                 L 7 9
+                 Q 7 11 5 11
+                 L -5 11
+                 Q -7 11 -7 9
+                 L -7 0 Z"
+              {...stroke} strokeWidth="1.2" />
+
+        {/* Bag pocket / strap detail */}
+        <path d="M -4 1 L 4 1 L 4 6 L -4 6 Z" {...stroke} strokeWidth="1.1" />
+        {/* Strap line */}
+        <path d="M -7 2 Q -10 5 -7 8" {...stroke} strokeWidth="1.1" />
+      </svg>
+    );
+  }
+
+  // ===== PRACTICE: descending bars + golf ball (top-right) =====
+  if (type === 'practice') {
+    return (
+      <svg {...props}>
+        {/* Golf ball top-right with dimples */}
+        <circle cx="8" cy="-8" r="4.5" {...stroke} strokeWidth="1.2" />
+        <circle cx="6.5" cy="-9.5" r="0.35" fill={color}/>
+        <circle cx="8" cy="-10" r="0.35" fill={color}/>
+        <circle cx="9.5" cy="-9.5" r="0.35" fill={color}/>
+        <circle cx="6" cy="-8" r="0.35" fill={color}/>
+        <circle cx="8" cy="-8" r="0.35" fill={color}/>
+        <circle cx="10" cy="-8" r="0.35" fill={color}/>
+        <circle cx="6.5" cy="-6.5" r="0.35" fill={color}/>
+        <circle cx="8" cy="-6" r="0.35" fill={color}/>
+        <circle cx="9.5" cy="-6.5" r="0.35" fill={color}/>
+
+        {/* Descending bars - 4 going down */}
+        <rect x="-12" y="-2" width="3" height="11" {...stroke} strokeWidth="1.2" />
+        <rect x="-7.5" y="0" width="3" height="9" {...stroke} strokeWidth="1.2" />
+        <rect x="-3" y="3" width="3" height="6" {...stroke} strokeWidth="1.2" />
+        <rect x="1.5" y="5" width="3" height="4" {...stroke} strokeWidth="1.2" />
 
         {/* Baseline */}
-        <line x1="-13" y1="9" x2="9" y2="9" {...stroke} />
+        <line x1="-13" y1="9" x2="9" y2="9" {...stroke} strokeWidth="1" />
 
-        {/* Descending arrow line going through bars */}
+        {/* Descending dashed trajectory line through bars */}
         <polyline points="-11,-4 -7,-2 -3,1 3,4 7,6"
-                  {...stroke} strokeWidth="1.3" />
+                  stroke={color} strokeWidth="1.3" fill="none"
+                  strokeDasharray="1.8 1.5"
+                  strokeLinecap="round" strokeLinejoin="round" />
         {/* Arrowhead */}
         <polyline points="5.5,7 7.5,6.3 6.8,4.3" {...stroke} strokeWidth="1.3" />
       </svg>
     );
   }
 
-  // === PRACTICE: golfer in swing finish (cleaner silhouette) ===
-  if (type === 'practice') {
-    return (
-      <svg {...props}>
-        {/* Cap */}
-        <path d="M -2 -9 L 2.5 -9 L 3 -8 L -2.5 -8 Z" {...stroke} />
-        <path d="M 0 -10 L 2.5 -9 L 3 -10" {...stroke} />
-        {/* Head */}
-        <circle cx="0" cy="-7" r="2" {...stroke} />
-        {/* Body - swing finish (twisted) */}
-        <path d="M -1 -5
-                 Q -2 -3 -1 0
-                 Q 0.5 2 0 4
-                 L 1.5 4
-                 Q 2.5 2 3 0
-                 Q 3.5 -3 2 -5 Z" {...stroke} />
-        {/* Front arm raised holding club */}
-        <path d="M 2 -5
-                 Q 5 -7 7 -10
-                 L 8 -9.5
-                 Q 6 -6 3 -4 Z" {...stroke} />
-        {/* Club shaft */}
-        <line x1="7.5" y1="-10" x2="3" y2="-13" {...stroke} strokeWidth="1.2" />
-        {/* Club head */}
-        <ellipse cx="2.5" cy="-13" rx="1.4" ry="0.8" {...stroke}
-                 transform="rotate(-35 2.5 -13)" />
-        {/* Back arm folded across */}
-        <path d="M -1 -5
-                 Q -3 -3 -3.5 -1
-                 L -2 -0.5
-                 Q -1 -2 0 -4 Z" {...stroke} />
-        {/* Hips */}
-        <rect x="-1.5" y="4" width="4" height="2" {...stroke} />
-        {/* Front leg straight */}
-        <path d="M -1 6 L 1 6 L 0.5 12 L -2 12 Z" {...stroke} />
-        {/* Back leg - knee bent inward (swing finish) */}
-        <path d="M 1 6 L 3 6 L 4 12 L 2 12 Z" {...stroke} />
-        {/* Ground line */}
-        <line x1="-5" y1="12" x2="6" y2="12" {...stroke} strokeWidth="0.8" />
-      </svg>
-    );
-  }
-
-  // === ROUND: rectangle with course name + par/over par + total score ===
+  // ===== ROUND: just the gross score, big and clean =====
   if (type === 'round') {
     const r = roundData || {};
-    const courseShort = r.courseShort || 'COURSE';
-    const par = r.coursePar !== undefined ? r.coursePar : 72;
-    const overPar = r.overPar !== undefined ? r.overPar : 30;
-    const overParStr = overPar > 0 ? `+${overPar}` : `${overPar}`;
-    const grossScore = r.grossScore !== undefined ? r.grossScore : 102;
+    const grossScore = r.grossScore !== undefined && r.grossScore !== 0 ? r.grossScore : 102;
+    const courseShort = r.courseShort || 'NORMANDY';
     const scoreStr = String(grossScore);
-    const scoreFontSize = scoreStr.length === 2 ? 11 : scoreStr.length === 3 ? 9 : 7;
 
-    // Adapt course name font-size to length
-    const nameLen = courseShort.length;
-    const nameFontSize = nameLen <= 5 ? 3.8 : nameLen <= 7 ? 3.2 : nameLen <= 9 ? 2.7 : 2.3;
-    const nameSpacing = nameLen <= 5 ? '0.2em' : nameLen <= 7 ? '0.15em' : '0.05em';
+    // Font size based on digit count
+    const fontSize = scoreStr.length === 2 ? 17 : scoreStr.length === 3 ? 14 : 11;
 
     return (
       <svg {...props}>
-        {/* Outer rectangle */}
-        <rect x="-12" y="-12" width="24" height="22" rx="1.5" {...stroke} />
-
-        {/* Course name - top center */}
-        <text x="0" y="-7.5" textAnchor="middle"
+        {/* Course name top - subtle */}
+        <text x="0" y="-9" textAnchor="middle"
               fill={color}
               fontFamily="'Inter', sans-serif"
-              fontSize={nameFontSize}
+              fontSize="3.2"
               fontWeight="600"
-              letterSpacing={nameSpacing}>
-          {courseShort}
+              opacity="0.85"
+              letterSpacing="0.15em">
+          {courseShort.length > 10 ? courseShort.substring(0, 10) : courseShort}
         </text>
-
-        {/* Horizontal divider */}
-        <line x1="-12" y1="-5.5" x2="12" y2="-5.5" {...stroke} strokeWidth="0.8" />
-
-        {/* Vertical divider (top portion only) */}
-        <line x1="0" y1="-5.5" x2="0" y2="-1.5" {...stroke} strokeWidth="0.8" />
-
-        {/* PAR (top-left) */}
-        <text x="-6" y="-2.5" textAnchor="middle"
-              fill={color}
-              fontFamily="Georgia, serif"
-              fontStyle="italic"
-              fontSize="4.5"
-              fontWeight="500">
-          {par}
-        </text>
-
-        {/* OVER PAR (top-right) */}
-        <text x="6" y="-2.5" textAnchor="middle"
-              fill={color}
-              fontFamily="Georgia, serif"
-              fontStyle="italic"
-              fontSize="4.5"
-              fontWeight="500">
-          {overParStr}
-        </text>
-
-        {/* Horizontal divider below top row */}
-        <line x1="-12" y1="-1.5" x2="12" y2="-1.5" {...stroke} strokeWidth="0.8" />
-
-        {/* TOTAL SCORE - big, centered */}
-        <text x="0" y="7"
+        {/* Big score */}
+        <text x="0" y="6"
               textAnchor="middle"
               fill={color}
               fontFamily="Georgia, serif"
               fontStyle="italic"
-              fontSize={scoreFontSize}
+              fontSize={fontSize}
               fontWeight="600">
           {scoreStr}
         </text>
@@ -2130,8 +2074,7 @@ function SectionIcon({ type, color, size = 28, scoreNumber, roundData }) {
     );
   }
 
-  // === Practice sub-icons (calendar, indoor, outdoor, log) ===
-  // These remain from earlier - kept for sub-section views
+  // ===== Sub-section icons for Practice subviews =====
   if (type === 'calendar') {
     return (
       <svg {...props}>
@@ -2152,7 +2095,7 @@ function SectionIcon({ type, color, size = 28, scoreNumber, roundData }) {
         <line x1="-4" y1="7" x2="-4" y2="11" {...stroke} />
         <line x1="4" y1="7" x2="4" y2="11" {...stroke} />
         <line x1="-8" y1="11" x2="8" y2="11" {...stroke} />
-        <path d="M -8 3 Q -4 -4 0 -2 Q 4 0 8 -6" {...stroke} strokeWidth="1" />
+        <path d="M -8 3 Q -4 -4 0 -2 Q 4 0 8 -6" {...stroke} />
       </svg>
     );
   }
@@ -2186,18 +2129,8 @@ function SectionIcon({ type, color, size = 28, scoreNumber, roundData }) {
 }
 
 
-
 // ============================================================
-// NEW ROUND FORM
-// ============================================================
-
-// ============================================================
-// AREA ICONS — based on user reference (May 18, 2026)
-// Line-art style, each in its own color for distinction
-// ============================================================
-// ============================================================
-// NEW ROUND FORM - simplified: just course name + image
-// AI analysis will be added in next iteration (Anthropic API)
+// NEW ROUND FORM - simplified: course name + scorecard image
 // ============================================================
 function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
   // Common Miami-area courses for quick suggestions
