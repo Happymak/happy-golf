@@ -219,9 +219,25 @@ Provide:
 
 4. **focusForNextRound** (array of strings, 3-4 actionable items): Concrete focus points for next round based on THIS round's specific failures. Reference DECADE/Tiger Five principles where relevant. Connect to his Q2 areas. Make them specific to what failed THIS round, not generic advice.
 
+5. **stats** (object): Extract numerical stats from the scorecard if visible. Include only what you can clearly see. Possible fields:
+   - grossScore (number, total gross)
+   - netScore (number)
+   - frontNine (number, e.g. 49)
+   - backNine (number, e.g. 53)
+   - coursePar (number, e.g. 72)
+   - overPar (number, strokes over par, e.g. 30)
+   - differential (number, handicap differential if shown)
+   - putts (number)
+   - penalties (number)
+   - gir (number, percentage as integer like 22 for 22%)
+   - teeAccuracy (number, percentage as integer)
+   - scrambling (number, percentage as integer)
+
+If you can't see a value clearly, omit that field. Return only fields you're confident about.
+
 Be direct, warm but honest, conversational like a coach who knows him. Use "you" throughout. If you see something positive, celebrate it. If you see compounding mistakes, point it out — but constructively.
 
-Keep total response under 500 words. Return ONLY valid JSON with the 4 keys: reading, areaConnections, tigerFiveCount, focusForNextRound.`;
+Keep total response under 500 words. Return ONLY valid JSON with these 5 keys: reading, areaConnections, tigerFiveCount, focusForNextRound, stats.`;
 
     const userMessage = `Course played: ${courseName || 'Unknown'}
 ${userContext ? `\nMy own observations about this round:\n${userContext}` : '\n(No additional notes provided.)'}
@@ -297,7 +313,8 @@ Please analyze this scorecard.`;
         reading: textContent.text,
         areaConnections: [],
         tigerFiveCount: '',
-        focusForNextRound: []
+        focusForNextRound: [],
+        stats: {}
       };
     }
 

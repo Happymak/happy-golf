@@ -103,6 +103,32 @@ I'm lucky to be playing this game.`;
     }
     if (parsed && !parsed.handicapCards) parsed.handicapCards = [];
     if (parsed && !parsed.rounds) parsed.rounds = [];
+
+    // Ensure the seed round (May 13) is always at the bottom of history if missing
+    if (parsed && Array.isArray(parsed.rounds)) {
+      const hasSeed = parsed.rounds.some(r => r.id === 'seed-2026-05-13');
+      if (!hasSeed) {
+        parsed.rounds.push({
+          id: 'seed-2026-05-13',
+          courseShort: 'NORMANDY',
+          courseFull: 'Miami Beach Golf Club',
+          date: '2026-05-13',
+          dateDisplay: 'May 13, 2026',
+          coursePar: 72,
+          overPar: 30,
+          grossScore: 102,
+          netScore: 83,
+          differential: 23.6,
+          teeColor: 'Blue',
+          yards: 6430,
+          slope: 138,
+          courseHandicap: 19,
+          image: '/round-may13.png',
+          notes: '',
+          aiAnalysis: null
+        });
+      }
+    }
     return parsed;
   };
 
@@ -1222,7 +1248,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
             {/* === LAST ROUND ACCORDION === */}
             <AccordionSection
               title="Last Round"
-              subtitle={`${lastRound.dateDisplay} · ${lastRound.courseFull} · Score ${lastRound.grossScore}`}
+              subtitle={`${lastRound.dateDisplay} · ${lastRound.courseFull}${lastRound.grossScore > 0 ? ` · Score ${lastRound.grossScore}` : ''}`}
               defaultOpen={roundsSection === 'last'}
               C={C} sans={sans} serif={serif}
             >
@@ -1360,13 +1386,13 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: `${s(24)}px`, fontStyle: 'italic', color: C.accent }}>
-                            {r.grossScore || '—'}
+                            {r.grossScore > 0 ? r.grossScore : '—'}
                           </div>
                           <div style={{
                             fontSize: '9px', letterSpacing: '0.18em',
                             textTransform: 'uppercase', opacity: 0.55,
                             fontFamily: sans, marginTop: '2px'
-                          }}>GROSS</div>
+                          }}>{r.grossScore > 0 ? 'GROSS' : 'NO SCORE'}</div>
                         </div>
                       </div>
                       {expandedRound === r.id && (
@@ -1532,6 +1558,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap');
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.85); } }
+        @keyframes recordPulse { 0%,100% { box-shadow: 0 0 0 4px rgba(239,68,68,0.3); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0.15); } }
 
         /* Lock the page so iOS doesn't rubber-band when content fits */
         html, body {
@@ -2175,12 +2202,14 @@ function SectionIcon({ type, color, size = 28, scoreNumber, roundData }) {
 // ============================================================
 // ============================================================
 // VOICE INPUT BUTTON — uses Web Speech API (iOS Safari compatible)
-// Tap once to start recording, tap again to stop. Appends to value.
+// Tap once to start, tap again to stop. iOS works best with continuous=false.
 // ============================================================
 function VoiceButton({ onTranscript, C, sans }) {
   const [recording, setRecording] = useState(false);
   const [supported, setSupported] = useState(true);
+  const [interimText, setInterimText] = useState('');
   const recognitionRef = useRef(null);
+  const stopRequestedRef = useRef(false);
 
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2188,35 +2217,60 @@ function VoiceButton({ onTranscript, C, sans }) {
       setSupported(false);
       return;
     }
+
     const recognition = new SR();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    // Default language: auto-detect based on user — but Spanish-English is common
-    // We'll use 'en-US' as default (handles Spanglish reasonably)
+    // iOS Safari is much more reliable with continuous=false + auto-restart
+    recognition.continuous = false;
+    recognition.interimResults = true;
     recognition.lang = navigator.language || 'en-US';
 
     recognition.onresult = (event) => {
       let final = '';
+      let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          final += event.results[i][0].transcript + ' ';
+          final += transcript + ' ';
+        } else {
+          interim += transcript;
         }
       }
-      if (final.trim()) onTranscript(final.trim());
+      if (interim) setInterimText(interim);
+      if (final.trim()) {
+        onTranscript(final.trim());
+        setInterimText('');
+      }
     };
 
     recognition.onerror = (e) => {
       console.warn('Speech recognition error:', e.error);
-      setRecording(false);
+      // Don't stop on no-speech; iOS triggers this when there's a pause
+      if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        setRecording(false);
+        setInterimText('');
+        stopRequestedRef.current = true;
+      }
     };
 
     recognition.onend = () => {
-      setRecording(false);
+      // Auto-restart unless user explicitly stopped
+      if (!stopRequestedRef.current) {
+        try {
+          recognition.start();
+        } catch (e) {
+          setRecording(false);
+          setInterimText('');
+        }
+      } else {
+        setRecording(false);
+        setInterimText('');
+      }
     };
 
     recognitionRef.current = recognition;
 
     return () => {
+      stopRequestedRef.current = true;
       try { recognition.stop(); } catch (e) {}
     };
   }, []);
@@ -2224,46 +2278,69 @@ function VoiceButton({ onTranscript, C, sans }) {
   const toggle = () => {
     if (!supported || !recognitionRef.current) return;
     if (recording) {
+      // User wants to stop
+      stopRequestedRef.current = true;
       try { recognitionRef.current.stop(); } catch (e) {}
       setRecording(false);
+      setInterimText('');
     } else {
+      // User wants to start
+      stopRequestedRef.current = false;
       try {
         recognitionRef.current.start();
         setRecording(true);
       } catch (e) {
-        // Already started
+        // Already started - reset and try again
+        try { recognitionRef.current.stop(); } catch (e) {}
+        setTimeout(() => {
+          try {
+            recognitionRef.current.start();
+            setRecording(true);
+          } catch (e) {}
+        }, 100);
       }
     }
   };
 
-  if (!supported) {
-    return null; // Hide button if browser doesn't support
-  }
+  if (!supported) return null;
 
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      style={{
-        background: recording ? '#ef4444' : 'transparent',
-        border: `1px solid ${recording ? '#ef4444' : C.border}`,
-        color: recording ? '#ffffff' : C.accent,
-        padding: '8px 14px',
-        fontFamily: sans, fontSize: '11px',
-        letterSpacing: '0.18em', textTransform: 'uppercase',
-        cursor: 'pointer', borderRadius: '6px',
-        fontWeight: 500,
-        display: 'inline-flex', alignItems: 'center', gap: '6px',
-        transition: 'all 0.2s'
-      }}
-      title={recording ? 'Tap to stop dictating' : 'Tap to dictate'}
-    >
-      <span style={{
-        fontSize: '14px',
-        animation: recording ? 'pulse 1.2s infinite' : 'none'
-      }}>{recording ? '🔴' : '🎤'}</span>
-      {recording ? 'Stop' : 'Dictate'}
-    </button>
+    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+      <button
+        type="button"
+        onClick={toggle}
+        style={{
+          background: recording ? '#ef4444' : 'transparent',
+          border: `1px solid ${recording ? '#ef4444' : C.border}`,
+          color: recording ? '#ffffff' : C.accent,
+          padding: '8px 14px',
+          fontFamily: sans, fontSize: '11px',
+          letterSpacing: '0.18em', textTransform: 'uppercase',
+          cursor: 'pointer', borderRadius: '6px',
+          fontWeight: 500,
+          display: 'inline-flex', alignItems: 'center', gap: '6px',
+          transition: 'all 0.2s',
+          position: 'relative',
+          boxShadow: recording ? '0 0 0 4px rgba(239,68,68,0.3)' : 'none',
+          animation: recording ? 'recordPulse 1.5s infinite' : 'none'
+        }}
+        title={recording ? 'Tap to stop dictating' : 'Tap to dictate'}
+      >
+        <span style={{
+          fontSize: '14px',
+          animation: recording ? 'pulse 1.2s infinite' : 'none'
+        }}>{recording ? '🔴' : '🎤'}</span>
+        {recording ? 'Listening… tap to stop' : 'Dictate'}
+      </button>
+      {recording && interimText && (
+        <div style={{
+          fontFamily: sans, fontSize: '10px',
+          opacity: 0.7, fontStyle: 'italic',
+          maxWidth: '200px', textAlign: 'right',
+          color: C.accent
+        }}>"{interimText}"</div>
+      )}
+    </div>
   );
 }
 
@@ -2408,23 +2485,28 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
       month: 'long', day: 'numeric', year: 'numeric'
     });
 
+    // Extract stats from AI analysis if available
+    const stats = aiAnalysis?.stats || {};
+
     const newRound = {
       courseShort: courseName.toUpperCase().trim(),
       courseFull: courseName.trim(),
       date: now.toISOString().split('T')[0],
       dateDisplay: dateDisplay,
-      coursePar: 72,
-      overPar: 0,
-      grossScore: 0,
-      netScore: null,
-      differential: null,
+      coursePar: stats.coursePar || 72,
+      overPar: stats.overPar || 0,
+      grossScore: stats.grossScore || 0,
+      netScore: stats.netScore || null,
+      frontNine: stats.frontNine || null,
+      backNine: stats.backNine || null,
+      differential: stats.differential || null,
       teeColor: 'Blue',
       yards: null,
       slope: null,
       courseHandicap: 19,
       image: imageDataUrl,
       notes: userObservations.trim(),
-      aiAnalysis: aiAnalysis  // Save analysis with the round
+      aiAnalysis: aiAnalysis  // Save full analysis with the round
     };
     onSave(newRound);
   };
