@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Heart, Crown, TrendingDown, Repeat, Flag,
+  Heart, Crown, TrendingDown, Repeat, Flag, Trophy,
   WavesHorizontal, Rocket, Goal, ListChecks
 } from 'lucide-react';
 
@@ -12,6 +12,10 @@ import {
 export default function GolfApp() {
   const [view, setView] = useState('home');
   const [areaView, setAreaView] = useState(null);
+  const [areaRatings, setAreaRatings] = useState({});
+  const [showAreaRatingPrompt, setShowAreaRatingPrompt] = useState(null);
+  const [practiceSessions, setPracticeSessions] = useState([]); // Completed sessions
+  const [activeSession, setActiveSession] = useState(null); // Currently running session
   const [practiceView, setPracticeView] = useState(null);
   const [showWaldron, setShowWaldron] = useState(false);
   const [editingMantra, setEditingMantra] = useState(false);
@@ -202,6 +206,8 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
     if (state.fontScale) setFontScale(state.fontScale);
     if (state.rounds && state.rounds.length > 0) setRounds(state.rounds);
     if (state.handicapCards) setHandicapCards(state.handicapCards);
+    if (state.areaRatings) setAreaRatings(state.areaRatings);
+    if (state.practiceSessions) setPracticeSessions(state.practiceSessions);
   };
 
   const saveState = (updates = {}) => {
@@ -211,6 +217,8 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
       fontScale: updates.fontScale ?? fontScale,
       rounds: updates.rounds ?? rounds,
       handicapCards: updates.handicapCards ?? handicapCards,
+      areaRatings: updates.areaRatings ?? areaRatings,
+      practiceSessions: updates.practiceSessions ?? practiceSessions,
       lastModified: Date.now()
     };
     // 1. Save to localStorage immediately
@@ -225,15 +233,68 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
     kvSaveTimeoutRef.current = setTimeout(() => syncToKV(state), 2000);
   };
 
+  // Compress image data URL to smaller size (used for old rounds before backup)
+  const compressImage = async (dataUrl, maxDim = 900, quality = 0.65) => {
+    return new Promise((resolve) => {
+      if (!dataUrl || !dataUrl.startsWith('data:image')) {
+        resolve(dataUrl);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round(height * (maxDim / width));
+            width = maxDim;
+          } else {
+            width = Math.round(width * (maxDim / height));
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
   const syncToKV = async (state) => {
     try {
       setKvSyncing(true);
+      // Compress images in rounds older than 30 days before backup
+      const now = Date.now();
+      const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+      const compressedRounds = await Promise.all((state.rounds || []).map(async (r) => {
+        const roundDate = new Date(r.date + 'T12:00:00').getTime();
+        if (now - roundDate > THIRTY_DAYS && r.image && r.image.startsWith('data:') && !r._compressed) {
+          const smaller = await compressImage(r.image, 900, 0.65);
+          return { ...r, image: smaller, _compressed: true };
+        }
+        return r;
+      }));
+      const stateToSync = { ...state, rounds: compressedRounds };
+
       const res = await fetch('/api/storage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: KV_KEY, value: state })
+        body: JSON.stringify({ key: KV_KEY, value: stateToSync })
       });
-      if (res.ok) setLastKvSync(Date.now());
+      if (res.ok) {
+        setLastKvSync(Date.now());
+        // Also update local state with compressed versions
+        if (compressedRounds.some(r => r._compressed)) {
+          setRounds(compressedRounds);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSync));
+        }
+      }
     } catch (e) {
       // Silent fail - localStorage is the source of truth
     } finally {
@@ -357,7 +418,39 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
       insight: 'Consistency in routine = consistency in result',
       current: 'No systematic routine before full shots and putts.',
       objective: 'Same sequence before every full shot and every putt — including a clear focal point.',
-      notes: 'Visualize the shot from behind the ball. Choose ONE focal point for the round (a mark on the ball, a landing spot, a feel cue, or a rhythm word) and stick to it all day. Execute without tension or doubt.'
+      notes: 'Visualize the shot from behind the ball. Choose ONE focal point for the round (a mark on the ball, a landing spot, a feel cue, or a rhythm word) and stick to it all day. Execute without tension or doubt.',
+      steps: [
+        {
+          n: 1,
+          title: 'Stand behind the ball',
+          detail: 'Step back 2-3 paces directly behind the ball. See the target line clearly.'
+        },
+        {
+          n: 2,
+          title: 'Visualize the shot',
+          detail: 'See the ball flight, trajectory, and where it lands. Picture the result first.'
+        },
+        {
+          n: 3,
+          title: 'Pick a focal point',
+          detail: 'A specific intermediate target — a leaf, a patch of grass, a fairway divot. 2-3 feet in front of the ball.'
+        },
+        {
+          n: 4,
+          title: 'One practice swing',
+          detail: 'Feel the rhythm and tempo you want. Match it to the shot you visualized.'
+        },
+        {
+          n: 5,
+          title: 'Set up to the ball',
+          detail: 'Address the ball with your focal point in mind. Take your stance with intent.'
+        },
+        {
+          n: 6,
+          title: 'Trigger word & execute',
+          detail: 'Say your focal word ("slow back, through" / "smooth" / etc). Commit fully. No second-guessing. Just swing.'
+        }
+      ]
     }
   ];
 
@@ -478,7 +571,12 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
     if (showRoundForm) { setShowRoundForm(false); return; }
     if (showHandicapForm) { setShowHandicapForm(false); return; }
     if (showWaldron) { setShowWaldron(false); return; }
-    if (areaView) { setAreaView(null); return; }
+    if (areaView) {
+      // Prompt for rating before leaving
+      setShowAreaRatingPrompt(areaView);
+      setAreaView(null);
+      return;
+    }
     if (practiceView) { setPracticeView(null); return; }
     goHome();
   };
@@ -603,6 +701,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
               <HomeCard title="Areas of Improvement" subtitle="Q2 2026"                 iconType="growth"     C={C} serif={serif} sans={sans} onClick={() => setView('areas')} />
               <HomeCard title="Practice Sessions"    subtitle="The Power of Six"        iconType="practice"   C={C} serif={serif} sans={sans} onClick={() => setView('practice')} />
               <HomeCard title="Latest Golf Round"    subtitle="Score, feel, notes"      iconType="round"      roundData={lastRound}      C={C} serif={serif} sans={sans} onClick={() => setView('round')} />
+              <HomeCard title="My Progress"          subtitle="Stats · trends · streaks" iconType="progress"   C={C} serif={serif} sans={sans} onClick={() => setView('progress')} />
             </div>
           </>
         )}
@@ -824,6 +923,80 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
                   {area.objective}
                 </div>
               </div>
+
+              {/* Steps (if area has them - e.g. Pre-shot Routine) */}
+              {Array.isArray(area.steps) && area.steps.length > 0 && (
+                <div style={{ marginBottom: '22px' }}>
+                  <Label C={C} sans={sans} color={area.color}>The Routine — Step by Step</Label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '14px' }}>
+                    {area.steps.map((step) => (
+                      <div key={step.n} style={{
+                        background: 'rgba(0,0,0,0.22)',
+                        border: `1px solid ${C.border}`,
+                        borderRadius: '8px',
+                        padding: '16px 18px',
+                        display: 'flex',
+                        gap: '16px'
+                      }}>
+                        <div style={{
+                          minWidth: '36px', height: '36px',
+                          borderRadius: '50%',
+                          background: area.color + '22',
+                          border: `1.5px solid ${area.color}`,
+                          color: area.color,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontFamily: sans, fontWeight: 700, fontSize: '15px',
+                          flexShrink: 0
+                        }}>{step.n}</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{
+                            fontFamily: serif, fontStyle: 'italic',
+                            fontSize: `${s(17)}px`, color: C.text,
+                            marginBottom: '5px', lineHeight: 1.3
+                          }}>{step.title}</div>
+                          <div style={{
+                            fontFamily: sans, fontSize: `${s(13)}px`,
+                            fontWeight: 300, lineHeight: 1.55, opacity: 0.85
+                          }}>{step.detail}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Ratings history (if any) */}
+              {areaRatings[area.id] && areaRatings[area.id].length > 0 && (
+                <div style={{
+                  background: 'rgba(163,217,85,0.04)',
+                  border: `1px solid ${area.color}30`,
+                  borderRadius: '8px', padding: '16px 18px',
+                  marginBottom: '22px'
+                }}>
+                  <Label C={C} sans={sans} color={area.color}>Your Recent Check-Ins</Label>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                    {areaRatings[area.id].slice(0, 8).map((r, i) => (
+                      <div key={i} style={{
+                        background: 'rgba(0,0,0,0.22)',
+                        border: `1px solid ${C.border}`,
+                        borderRadius: '6px',
+                        padding: '8px 12px',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{
+                          fontSize: '20px', fontStyle: 'italic',
+                          color: area.color, fontFamily: serif
+                        }}>{r.rating}</div>
+                        <div style={{
+                          fontFamily: sans, fontSize: '9px',
+                          opacity: 0.55, letterSpacing: '0.15em',
+                          textTransform: 'uppercase', marginTop: '2px'
+                        }}>{new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div style={{
                 background: 'rgba(0,0,0,0.22)',
@@ -1086,13 +1259,33 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
 
         {view === 'practice' && practiceView === 'indoor' && (
           <SubSectionHeader title="Indoor Session" tag="4.2" badge="120 min · Trackman" iconType="indoor" C={C} serif={serif} sans={sans}>
-            <SessionPanel blocks={indoorBlocks} C={C} sans={sans} serif={serif} totalMin={120} sessionName="Indoor" playHoleDropSound={playHoleDropSound} />
+            <SessionPanel
+              blocks={indoorBlocks} C={C} sans={sans} serif={serif}
+              totalMin={120} sessionName="Indoor"
+              playHoleDropSound={playHoleDropSound}
+              onSessionEnd={(sessionData) => {
+                const newSession = { ...sessionData, id: 'sess-' + Date.now(), date: new Date().toISOString().split('T')[0] };
+                const updated = [newSession, ...practiceSessions];
+                setPracticeSessions(updated);
+                saveState({ practiceSessions: updated });
+              }}
+            />
           </SubSectionHeader>
         )}
 
         {view === 'practice' && practiceView === 'outdoor' && (
           <SubSectionHeader title="Outdoor Session" tag="4.3" badge="90 min · Short game focus" iconType="outdoor" C={C} serif={serif} sans={sans}>
-            <SessionPanel blocks={outdoorBlocks} C={C} sans={sans} serif={serif} totalMin={90} sessionName="Outdoor" playHoleDropSound={playHoleDropSound} />
+            <SessionPanel
+              blocks={outdoorBlocks} C={C} sans={sans} serif={serif}
+              totalMin={90} sessionName="Outdoor"
+              playHoleDropSound={playHoleDropSound}
+              onSessionEnd={(sessionData) => {
+                const newSession = { ...sessionData, id: 'sess-' + Date.now(), date: new Date().toISOString().split('T')[0] };
+                const updated = [newSession, ...practiceSessions];
+                setPracticeSessions(updated);
+                saveState({ practiceSessions: updated });
+              }}
+            />
           </SubSectionHeader>
         )}
 
@@ -1239,6 +1432,176 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
           </SubSectionHeader>
         )}
 
+        {/* ========== MY PROGRESS ========== */}
+        {view === 'progress' && (
+          <SectionHeader title="My Progress" subtitle="Stats · trends · streaks" iconType="progress" C={C} serif={serif} sans={sans}>
+
+            <div style={{
+              fontStyle: 'italic', fontSize: '16px',
+              textAlign: 'center', opacity: 0.75, marginBottom: '28px',
+              padding: '0 8px'
+            }}>"Improvement is measured, not assumed."</div>
+
+            {/* ROUNDS STATS */}
+            <div style={{
+              background: 'rgba(0,0,0,0.22)',
+              border: `1px solid ${C.border}`,
+              borderRadius: '10px',
+              padding: '20px',
+              marginBottom: '16px'
+            }}>
+              <div style={{
+                fontSize: '11px', letterSpacing: '0.3em',
+                textTransform: 'uppercase', color: C.accent,
+                fontFamily: sans, marginBottom: '16px', fontWeight: 500
+              }}>Rounds</div>
+
+              {(() => {
+                const validRounds = rounds.filter(r => r.grossScore > 0);
+                if (validRounds.length === 0) {
+                  return <div style={{ fontFamily: sans, fontSize: '13px', opacity: 0.6, textAlign: 'center', padding: '10px 0' }}>
+                    Once you log rounds with scores, stats will appear here.
+                  </div>;
+                }
+                const scores = validRounds.map(r => r.grossScore);
+                const avg = (scores.reduce((s,x) => s+x, 0) / scores.length).toFixed(1);
+                const best = Math.min(...scores);
+                const worst = Math.max(...scores);
+                const last10 = validRounds.slice(0, 10);
+                const avgLast10 = (last10.reduce((s,r) => s+r.grossScore, 0) / last10.length).toFixed(1);
+
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <Stat label="Total rounds" value={validRounds.length} C={C} sans={sans} serif={serif} />
+                    <Stat label="Best score" value={best} C={C} sans={sans} serif={serif} accent />
+                    <Stat label="Average" value={avg} C={C} sans={sans} serif={serif} />
+                    <Stat label="Last 10 avg" value={avgLast10} C={C} sans={sans} serif={serif} />
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* PRACTICE STATS */}
+            <div style={{
+              background: 'rgba(0,0,0,0.22)',
+              border: `1px solid ${C.border}`,
+              borderRadius: '10px',
+              padding: '20px',
+              marginBottom: '16px'
+            }}>
+              <div style={{
+                fontSize: '11px', letterSpacing: '0.3em',
+                textTransform: 'uppercase', color: C.accent,
+                fontFamily: sans, marginBottom: '16px', fontWeight: 500
+              }}>Practice Time</div>
+
+              {(() => {
+                if (!practiceSessions || practiceSessions.length === 0) {
+                  return <div style={{ fontFamily: sans, fontSize: '13px', opacity: 0.6, textAlign: 'center', padding: '10px 0' }}>
+                    Start a session in Practice → it will track real time spent.
+                  </div>;
+                }
+                const now = Date.now();
+                const WEEK = 7 * 24 * 60 * 60 * 1000;
+                const MONTH = 30 * 24 * 60 * 60 * 1000;
+                const totalMin = (sec) => Math.round(sec / 60);
+
+                const weekTotal = practiceSessions
+                  .filter(s => now - (s.endedAt || 0) < WEEK)
+                  .reduce((sum, s) => sum + (s.totalActualSec || 0), 0);
+                const monthTotal = practiceSessions
+                  .filter(s => now - (s.endedAt || 0) < MONTH)
+                  .reduce((sum, s) => sum + (s.totalActualSec || 0), 0);
+                const allTotal = practiceSessions
+                  .reduce((sum, s) => sum + (s.totalActualSec || 0), 0);
+
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <Stat label="This week" value={`${totalMin(weekTotal)}m`} C={C} sans={sans} serif={serif} accent />
+                    <Stat label="This month" value={`${totalMin(monthTotal)}m`} C={C} sans={sans} serif={serif} />
+                    <Stat label="Total ever" value={`${(totalMin(allTotal) / 60).toFixed(1)}h`} C={C} sans={sans} serif={serif} />
+                    <Stat label="Sessions" value={practiceSessions.length} C={C} sans={sans} serif={serif} />
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* AREA RATINGS TRENDS */}
+            <div style={{
+              background: 'rgba(0,0,0,0.22)',
+              border: `1px solid ${C.border}`,
+              borderRadius: '10px',
+              padding: '20px',
+              marginBottom: '16px'
+            }}>
+              <div style={{
+                fontSize: '11px', letterSpacing: '0.3em',
+                textTransform: 'uppercase', color: C.accent,
+                fontFamily: sans, marginBottom: '16px', fontWeight: 500
+              }}>Areas of Improvement</div>
+
+              {(() => {
+                const areasWithRatings = areas.filter(a => areaRatings[a.id] && areaRatings[a.id].length > 0);
+                if (areasWithRatings.length === 0) {
+                  return <div style={{ fontFamily: sans, fontSize: '13px', opacity: 0.6, textAlign: 'center', padding: '10px 0' }}>
+                    Rate how each area feels when you visit it. Trends will appear here.
+                  </div>;
+                }
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {areasWithRatings.map(area => {
+                      const ratings = areaRatings[area.id];
+                      const latest = ratings[0].rating;
+                      const avg = (ratings.reduce((s, r) => s + r.rating, 0) / ratings.length).toFixed(1);
+                      return (
+                        <div key={area.id} style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '10px 14px',
+                          background: 'rgba(255,255,255,0.03)',
+                          borderRadius: '6px',
+                          borderLeft: `3px solid ${area.color}`
+                        }}>
+                          <div>
+                            <div style={{ fontSize: '13px', fontFamily: serif, fontStyle: 'italic' }}>{area.title}</div>
+                            <div style={{ fontSize: '10px', fontFamily: sans, opacity: 0.55, marginTop: '2px' }}>
+                              {ratings.length} check-in{ratings.length !== 1 ? 's' : ''} · avg {avg}
+                            </div>
+                          </div>
+                          <div style={{
+                            fontSize: '22px', fontStyle: 'italic',
+                            color: area.color, fontFamily: serif
+                          }}>{latest}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* HANDICAP TREND */}
+            {handicapCards.length > 0 && (
+              <div style={{
+                background: 'rgba(0,0,0,0.22)',
+                border: `1px solid ${C.border}`,
+                borderRadius: '10px',
+                padding: '20px'
+              }}>
+                <div style={{
+                  fontSize: '11px', letterSpacing: '0.3em',
+                  textTransform: 'uppercase', color: C.accent,
+                  fontFamily: sans, marginBottom: '16px', fontWeight: 500
+                }}>Handicap Index</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <Stat label="Current" value={handicapCards[0].handicapIndex} C={C} sans={sans} serif={serif} accent />
+                  <Stat label="Cards logged" value={handicapCards.length} C={C} sans={sans} serif={serif} />
+                </div>
+              </div>
+            )}
+
+          </SectionHeader>
+        )}
+
         {/* ========== LATEST ROUND ========== */}
 
         {/* ========== ROUNDS (Last + Handicap Card + History) ========== */}
@@ -1265,7 +1628,18 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
                 }}>+ Log New Round</button>
               </div>
 
-              <RoundDetail round={lastRound} onImageClick={() => setRoundImageFullscreen(true)} C={C} sans={sans} serif={serif} s={s} />
+              <RoundDetail
+                round={lastRound}
+                onImageClick={() => setRoundImageFullscreen(true)}
+                onUpdateScore={(roundId, newScore) => {
+                  const updatedRounds = rounds.map(r =>
+                    r.id === roundId ? { ...r, grossScore: newScore } : r
+                  );
+                  setRounds(updatedRounds);
+                  saveState({ rounds: updatedRounds });
+                }}
+                C={C} sans={sans} serif={serif} s={s}
+              />
             </AccordionSection>
 
             {/* === HANDICAP CARD ACCORDION === */}
@@ -1397,7 +1771,18 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
                       </div>
                       {expandedRound === r.id && (
                         <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: `1px solid ${C.border}` }}>
-                          <RoundDetail round={r} onImageClick={null} C={C} sans={sans} serif={serif} s={s} compact={true} />
+                          <RoundDetail
+                            round={r}
+                            onImageClick={null}
+                            onUpdateScore={(roundId, newScore) => {
+                              const updatedRounds = rounds.map(rd =>
+                                rd.id === roundId ? { ...rd, grossScore: newScore } : rd
+                              );
+                              setRounds(updatedRounds);
+                              saveState({ rounds: updatedRounds });
+                            }}
+                            C={C} sans={sans} serif={serif} s={s} compact={true}
+                          />
                         </div>
                       )}
                     </div>
@@ -1584,6 +1969,33 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
         ::-webkit-scrollbar { display: none; }
         * { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
+
+      {/* Area Rating Modal - shows when leaving an area view */}
+      {showAreaRatingPrompt && (() => {
+        const area = areas.find(a => a.id === showAreaRatingPrompt);
+        if (!area) return null;
+        return (
+          <AreaRatingModal
+            areaId={area.id}
+            areaName={area.title}
+            areaColor={area.color}
+            onSave={(rating) => {
+              const newRatings = {
+                ...areaRatings,
+                [area.id]: [
+                  { date: new Date().toISOString().split('T')[0], rating, timestamp: Date.now() },
+                  ...(areaRatings[area.id] || [])
+                ]
+              };
+              setAreaRatings(newRatings);
+              saveState({ areaRatings: newRatings });
+              setShowAreaRatingPrompt(null);
+            }}
+            onSkip={() => setShowAreaRatingPrompt(null)}
+            C={C} sans={sans} serif={serif}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -1828,11 +2240,14 @@ function ConceptBlock({ title, subtitle, tag, children, C, serif, sans }) {
   );
 }
 
-function SessionPanel({ blocks, C, sans, serif, totalMin, sessionName, playHoleDropSound }) {
+function SessionPanel({ blocks, C, sans, serif, totalMin, sessionName, playHoleDropSound, onSessionEnd }) {
   const [currentBlock, setCurrentBlock] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(blocks[0].min * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [completed, setCompleted] = useState(false);
+  // Track real time spent per block (in seconds)
+  const [blockRealTimes, setBlockRealTimes] = useState(() => blocks.map(() => 0));
+  const [sessionStartTime, setSessionStartTime] = useState(null);
 
   const playBlockChime = () => {
     if (playHoleDropSound) playHoleDropSound();
@@ -1841,7 +2256,14 @@ function SessionPanel({ blocks, C, sans, serif, totalMin, sessionName, playHoleD
 
   useEffect(() => {
     if (!isRunning) return;
+    if (!sessionStartTime) setSessionStartTime(Date.now());
     const interval = setInterval(() => {
+      // Increment real time for current block every second
+      setBlockRealTimes(prev => {
+        const next = [...prev];
+        next[currentBlock] = (next[currentBlock] || 0) + 1;
+        return next;
+      });
       setSecondsLeft((s) => {
         if (s <= 1) {
           playBlockChime();
@@ -1860,6 +2282,25 @@ function SessionPanel({ blocks, C, sans, serif, totalMin, sessionName, playHoleD
     return () => clearInterval(interval);
   }, [isRunning, currentBlock, blocks]);
 
+  // When session completes naturally, fire onSessionEnd
+  useEffect(() => {
+    if (completed && onSessionEnd && blockRealTimes.some(t => t > 0)) {
+      onSessionEnd({
+        sessionName,
+        totalPlannedMinutes: totalMin,
+        blocks: blocks.map((b, i) => ({
+          name: b.name,
+          plannedMin: b.min,
+          actualSec: blockRealTimes[i] || 0
+        })),
+        totalActualSec: blockRealTimes.reduce((s, x) => s + x, 0),
+        startedAt: sessionStartTime,
+        endedAt: Date.now(),
+        ended: 'completed'
+      });
+    }
+  }, [completed]);
+
   const formatTime = (s) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
@@ -1869,6 +2310,8 @@ function SessionPanel({ blocks, C, sans, serif, totalMin, sessionName, playHoleD
   const reset = () => {
     setIsRunning(false); setCurrentBlock(0);
     setSecondsLeft(blocks[0].min * 60); setCompleted(false);
+    setBlockRealTimes(blocks.map(() => 0));
+    setSessionStartTime(null);
   };
   const skip = () => {
     playBlockChime();
@@ -1877,6 +2320,25 @@ function SessionPanel({ blocks, C, sans, serif, totalMin, sessionName, playHoleD
       setSecondsLeft(blocks[currentBlock + 1].min * 60);
     } else {
       setIsRunning(false); setCompleted(true); setSecondsLeft(0);
+    }
+  };
+  const endSessionEarly = () => {
+    setIsRunning(false);
+    setCompleted(true);
+    if (onSessionEnd) {
+      onSessionEnd({
+        sessionName,
+        totalPlannedMinutes: totalMin,
+        blocks: blocks.map((b, i) => ({
+          name: b.name,
+          plannedMin: b.min,
+          actualSec: blockRealTimes[i] || 0
+        })),
+        totalActualSec: blockRealTimes.reduce((s, x) => s + x, 0),
+        startedAt: sessionStartTime,
+        endedAt: Date.now(),
+        ended: 'manual'
+      });
     }
   };
   const jumpToBlock = (idx) => {
@@ -2010,6 +2472,20 @@ function SessionPanel({ blocks, C, sans, serif, totalMin, sessionName, playHoleD
               }}>↺</button>
             </div>
 
+            {/* End session early button - shows after time has been tracked */}
+            {blockRealTimes.some(t => t > 0) && (
+              <button onClick={endSessionEarly} style={{
+                width: '100%', marginTop: '12px',
+                background: 'transparent',
+                border: `1px solid ${C.accent}50`,
+                color: C.accent, opacity: 0.85,
+                padding: '11px', fontFamily: sans,
+                fontSize: '11px', letterSpacing: '0.2em',
+                textTransform: 'uppercase', cursor: 'pointer',
+                borderRadius: '4px', fontWeight: 500
+              }}>End Session & Save Progress</button>
+            )}
+
             <div style={{
               marginTop: '12px', fontSize: '11px',
               fontFamily: sans, opacity: 0.5,
@@ -2138,6 +2614,9 @@ function SectionIcon({ type, color, size = 28, scoreNumber, roundData }) {
     // For round, we show the Flag icon at the standard size
     // The score number is displayed elsewhere (in the home card text)
     return <Flag size={size} color={color} strokeWidth={1.8} />;
+  }
+  if (type === 'progress') {
+    return <Trophy size={size} color={color} strokeWidth={1.8} />;
   }
 
   // === Sub-section icons (custom SVG) ===
@@ -2356,6 +2835,7 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
   const [imageMediaType, setImageMediaType] = useState('image/jpeg');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [userObservations, setUserObservations] = useState('');
+  const [manualScore, setManualScore] = useState('');
 
   // AI analysis state
   const [aiAnalysis, setAiAnalysis] = useState(null);
@@ -2376,8 +2856,9 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        // Draw to canvas, scale down if too big (max 1200px on long side, 75% quality)
-        const maxDim = 1200;
+        // For new rounds, keep high quality (1600px / 85%) so AI can read scorecards well.
+        // Old rounds get aggressive compression at backup time.
+        const maxDim = 1600;
         let { width, height } = img;
         if (width > maxDim || height > maxDim) {
           if (width > height) {
@@ -2395,8 +2876,8 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
-        // Convert to JPEG at 75% quality - balance between size and readability of scorecard text
-        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        // Quality 85% for fresh uploads - keep scorecard numbers crisp
+        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.85);
         setImagePreview(jpegDataUrl);
         setImageDataUrl(jpegDataUrl);
         setImageMediaType('image/jpeg');
@@ -2488,6 +2969,9 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
     // Extract stats from AI analysis if available
     const stats = aiAnalysis?.stats || {};
 
+    // Manual score takes priority if filled, otherwise use AI extracted, fallback to 0
+    const finalGrossScore = manualScore.trim() ? parseInt(manualScore.trim(), 10) : (stats.grossScore || 0);
+
     const newRound = {
       courseShort: courseName.toUpperCase().trim(),
       courseFull: courseName.trim(),
@@ -2495,7 +2979,7 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
       dateDisplay: dateDisplay,
       coursePar: stats.coursePar || 72,
       overPar: stats.overPar || 0,
-      grossScore: stats.grossScore || 0,
+      grossScore: finalGrossScore,
       netScore: stats.netScore || null,
       frontNine: stats.frontNine || null,
       backNine: stats.backNine || null,
@@ -2506,7 +2990,7 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
       courseHandicap: 19,
       image: imageDataUrl,
       notes: userObservations.trim(),
-      aiAnalysis: aiAnalysis  // Save full analysis with the round
+      aiAnalysis: aiAnalysis
     };
     onSave(newRound);
   };
@@ -2618,6 +3102,30 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
             )}
           </div>
         </div>
+
+        {/* Gross Score - manual entry (optional, AI can also extract) */}
+        {imageDataUrl && (
+          <div>
+            <label style={labelStyle}>Gross Score (optional)</label>
+            <input
+              type="number"
+              inputMode="numeric"
+              placeholder="e.g. 95"
+              value={manualScore}
+              onChange={(e) => setManualScore(e.target.value)}
+              style={{
+                ...inputBase,
+                width: '120px'
+              }}
+            />
+            <div style={{
+              fontFamily: sans, fontSize: '11px',
+              opacity: 0.55, marginTop: '6px', lineHeight: 1.5
+            }}>
+              Manual entry overrides AI extraction. Leave blank to let Claude detect it from the scorecard.
+            </div>
+          </div>
+        )}
 
         {/* My Observations (optional) - shows after image is uploaded */}
         {imageDataUrl && (
@@ -2941,9 +3449,76 @@ function AccordionSection({ title, subtitle, defaultOpen, children, C, sans, ser
 // ============================================================
 // ROUND DETAIL — used in Last Round and in expanded History items
 // ============================================================
-function RoundDetail({ round, onImageClick, C, sans, serif, s, compact }) {
+function RoundDetail({ round, onImageClick, C, sans, serif, s, compact, onUpdateScore }) {
+  const [editingScore, setEditingScore] = useState(false);
+  const [scoreValue, setScoreValue] = useState(round.grossScore || '');
+
+  const saveScore = () => {
+    const n = parseInt(scoreValue, 10);
+    if (!isNaN(n) && n > 0 && onUpdateScore) {
+      onUpdateScore(round.id, n);
+    }
+    setEditingScore(false);
+  };
+
   return (
     <>
+      {/* Score header (editable when onUpdateScore provided) */}
+      {onUpdateScore && (
+        <div style={{
+          background: 'rgba(0,0,0,0.22)',
+          border: `1px solid ${C.border}`,
+          borderRadius: '8px',
+          padding: '12px 16px',
+          marginBottom: '14px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div style={{
+            fontSize: '10px', letterSpacing: '0.25em',
+            textTransform: 'uppercase', opacity: 0.6,
+            fontFamily: sans, fontWeight: 500
+          }}>Gross Score</div>
+          {editingScore ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={scoreValue}
+                onChange={(e) => setScoreValue(e.target.value)}
+                onBlur={saveScore}
+                onKeyDown={(e) => e.key === 'Enter' && saveScore()}
+                autoFocus
+                style={{
+                  width: '80px',
+                  background: 'rgba(0,0,0,0.3)',
+                  border: `1px solid ${C.accent}`,
+                  borderRadius: '4px',
+                  padding: '6px 10px',
+                  color: C.text,
+                  fontFamily: sans, fontSize: '18px',
+                  textAlign: 'right',
+                  outline: 'none'
+                }}
+              />
+            </div>
+          ) : (
+            <div onClick={() => setEditingScore(true)}
+              style={{
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '8px'
+              }}>
+              <span style={{
+                fontSize: '22px', fontStyle: 'italic',
+                color: round.grossScore > 0 ? C.accent : 'rgba(255,255,255,0.4)'
+              }}>{round.grossScore > 0 ? round.grossScore : 'Tap to add'}</span>
+              <span style={{ fontSize: '13px', opacity: 0.6 }}>✏️</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Scorecard image */}
       {round.image && (
         <div
@@ -3235,6 +3810,123 @@ function NewHandicapCardForm({ onCancel, onSave, C, serif, sans }) {
           }}>Cancel</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ============================================================
+// AREA RATING SLIDER MODAL
+// Asks "how does this area feel?" 1-10 when leaving an area view
+// ============================================================
+function AreaRatingModal({ areaId, areaName, areaColor, onSave, onSkip, C, sans, serif }) {
+  const [rating, setRating] = useState(5);
+
+  return (
+    <div onClick={onSkip} style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.75)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '20px', zIndex: 2000,
+      animation: 'fadeIn 0.25s'
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: C.bg2,
+        border: `1px solid ${areaColor || C.accent}60`,
+        borderRadius: '14px',
+        padding: '28px 24px',
+        maxWidth: '380px', width: '100%'
+      }}>
+        <div style={{
+          fontSize: '11px', letterSpacing: '0.3em',
+          textTransform: 'uppercase', color: areaColor || C.accent,
+          fontFamily: sans, marginBottom: '10px', fontWeight: 500
+        }}>Quick Check-In</div>
+        <div style={{
+          fontSize: '22px', fontStyle: 'italic',
+          color: C.text, marginBottom: '6px', lineHeight: 1.2
+        }}>How does {areaName} feel right now?</div>
+        <div style={{
+          fontFamily: sans, fontSize: '12px',
+          opacity: 0.6, marginBottom: '24px'
+        }}>1 = struggling · 10 = dialed in</div>
+
+        {/* Big number display */}
+        <div style={{
+          textAlign: 'center', marginBottom: '20px'
+        }}>
+          <div style={{
+            fontSize: '64px', fontStyle: 'italic', lineHeight: 1,
+            color: areaColor || C.accent,
+            fontFamily: serif
+          }}>{rating}</div>
+        </div>
+
+        {/* Slider */}
+        <input
+          type="range"
+          min="1" max="10" step="1"
+          value={rating}
+          onChange={(e) => setRating(parseInt(e.target.value, 10))}
+          style={{
+            width: '100%',
+            accentColor: areaColor || C.accent,
+            cursor: 'pointer',
+            marginBottom: '8px'
+          }}
+        />
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          fontFamily: sans, fontSize: '10px', opacity: 0.5,
+          marginBottom: '24px'
+        }}>
+          <span>1</span><span>5</span><span>10</span>
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={() => onSave(rating)} style={{
+            flex: 1,
+            background: areaColor || C.accent,
+            border: 'none', color: C.bg, padding: '14px',
+            fontFamily: sans, fontSize: '12px',
+            letterSpacing: '0.2em', textTransform: 'uppercase',
+            fontWeight: 700, cursor: 'pointer', borderRadius: '6px'
+          }}>Save</button>
+          <button onClick={onSkip} style={{
+            background: 'transparent', border: `1px solid ${C.border}`,
+            color: C.text, padding: '14px 20px',
+            fontFamily: sans, fontSize: '12px',
+            letterSpacing: '0.2em', textTransform: 'uppercase',
+            cursor: 'pointer', borderRadius: '6px', opacity: 0.65
+          }}>Skip</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// STAT — small reusable stat block for My Progress
+// ============================================================
+function Stat({ label, value, C, sans, serif, accent }) {
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.03)',
+      border: `1px solid ${C.border}`,
+      borderRadius: '6px',
+      padding: '12px 14px',
+      textAlign: 'center'
+    }}>
+      <div style={{
+        fontSize: '24px', fontStyle: 'italic',
+        color: accent ? C.accent : C.text,
+        fontFamily: serif,
+        lineHeight: 1
+      }}>{value}</div>
+      <div style={{
+        fontSize: '9px', letterSpacing: '0.22em',
+        textTransform: 'uppercase', opacity: 0.55,
+        fontFamily: sans, marginTop: '6px', fontWeight: 500
+      }}>{label}</div>
     </div>
   );
 }
