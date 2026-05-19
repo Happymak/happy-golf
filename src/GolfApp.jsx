@@ -2042,6 +2042,7 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [imageMediaType, setImageMediaType] = useState('image/jpeg');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [userObservations, setUserObservations] = useState('');
 
   // AI analysis state
   const [aiAnalysis, setAiAnalysis] = useState(null);
@@ -2097,7 +2098,8 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
         body: JSON.stringify({
           imageBase64: base64Data,
           imageMediaType: mediaType,
-          courseName: courseName.trim()
+          courseName: courseName.trim(),
+          userContext: userObservations.trim() || null
         })
       });
 
@@ -2142,7 +2144,7 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
       slope: null,
       courseHandicap: 19,
       image: imageDataUrl,
-      notes: '',
+      notes: userObservations.trim(),
       aiAnalysis: aiAnalysis  // Save analysis with the round
     };
     onSave(newRound);
@@ -2255,6 +2257,31 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
             )}
           </div>
         </div>
+
+        {/* My Observations (optional) - shows after image is uploaded */}
+        {imageDataUrl && (
+          <div>
+            <label style={labelStyle}>My observations (optional)</label>
+            <textarea
+              placeholder="e.g. Hit too many fairways on the back. Need to sharpen short game. Felt tense on the back nine. Driver lost direction after hole 12..."
+              value={userObservations}
+              onChange={(e) => setUserObservations(e.target.value)}
+              style={{
+                ...inputBase,
+                minHeight: '100px',
+                resize: 'vertical',
+                fontFamily: sans,
+                lineHeight: 1.5
+              }}
+            />
+            <div style={{
+              fontFamily: sans, fontSize: '11px',
+              opacity: 0.55, marginTop: '6px', lineHeight: 1.5
+            }}>
+              Sensations, weather, what felt off, what worked — anything the scorecard alone won't show. This helps Claude give you a better analysis.
+            </div>
+          </div>
+        )}
 
         {/* AI Analysis Button */}
         {imageDataUrl && courseName.trim() && !aiAnalysis && !analyzing && (
