@@ -1172,27 +1172,61 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
               <div style={{
                 fontSize: '11px', letterSpacing: '0.3em',
                 textTransform: 'uppercase', color: C.accent,
-                fontFamily: sans, marginBottom: '14px', fontWeight: 500
+                fontFamily: sans, marginBottom: '14px', fontWeight: 500,
+                display: 'flex', alignItems: 'center', gap: '8px'
               }}>
-                Reading the Round
+                {lastRound.aiAnalysis ? '✨ Reading the Round' : 'Reading the Round'}
               </div>
-              <div style={{
-                fontFamily: sans, fontSize: `${s(14)}px`,
-                fontWeight: 300, lineHeight: 1.7, opacity: 0.9
-              }}>
-                <p style={{ marginTop: 0 }}>
-                  Front nine (49) much stronger than the back (53). The back fell apart with three 6s and a 7 in five holes — a stretch of compounding mistakes that DECADE would call avoidable.
-                </p>
-                <p>
-                  Tee accuracy dropped from <strong style={{ color: C.text }}>89% out → 33% in</strong>. The driver was the leak. This matches the Q2 area of improvement — recover driver consistency.
-                </p>
-                <p>
-                  <strong style={{ color: C.text }}>The Tiger Five count:</strong> 4 double bogeys, a triple, plus penalties on 7 holes. Eliminating the doubles alone would have put the round in the mid-90s.
-                </p>
-                <p style={{ marginBottom: 0 }}>
-                  <strong style={{ color: C.accent }}>Best moment:</strong> hole 6 — par 3, scrambled for par from green-side trouble. Proof the short game holds up when the driver doesn't.
-                </p>
-              </div>
+              {lastRound.aiAnalysis ? (
+                <div style={{
+                  fontFamily: sans, fontSize: `${s(14)}px`,
+                  fontWeight: 300, lineHeight: 1.7, opacity: 0.9
+                }}>
+                  <div style={{ whiteSpace: 'pre-wrap', marginBottom: lastRound.aiAnalysis.tigerFiveCount ? '14px' : 0 }}>
+                    {lastRound.aiAnalysis.reading}
+                  </div>
+                  {lastRound.aiAnalysis.tigerFiveCount && (
+                    <div style={{
+                      fontStyle: 'italic', opacity: 0.85,
+                      paddingTop: '12px',
+                      borderTop: `1px solid ${C.border}`
+                    }}>
+                      <strong style={{ color: C.text, fontStyle: 'normal' }}>Tiger Five count: </strong>
+                      {lastRound.aiAnalysis.tigerFiveCount}
+                    </div>
+                  )}
+                  {Array.isArray(lastRound.aiAnalysis.areaConnections) && lastRound.aiAnalysis.areaConnections.length > 0 && (
+                    <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${C.border}` }}>
+                      <div style={{
+                        fontSize: '10px', letterSpacing: '0.25em',
+                        textTransform: 'uppercase', color: C.accent,
+                        marginBottom: '8px', fontWeight: 500
+                      }}>Connection to Q2 Areas</div>
+                      <ul style={{ paddingLeft: '16px', margin: 0 }}>
+                        {lastRound.aiAnalysis.areaConnections.map((a, i) => <li key={i}>{a}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{
+                  fontFamily: sans, fontSize: `${s(14)}px`,
+                  fontWeight: 300, lineHeight: 1.7, opacity: 0.9
+                }}>
+                  <p style={{ marginTop: 0 }}>
+                    Front nine (49) much stronger than the back (53). The back fell apart with three 6s and a 7 in five holes — a stretch of compounding mistakes that DECADE would call avoidable.
+                  </p>
+                  <p>
+                    Tee accuracy dropped from <strong style={{ color: C.text }}>89% out → 33% in</strong>. The driver was the leak. This matches the Q2 area of improvement — recover driver consistency.
+                  </p>
+                  <p>
+                    <strong style={{ color: C.text }}>The Tiger Five count:</strong> 4 double bogeys, a triple, plus penalties on 7 holes. Eliminating the doubles alone would have put the round in the mid-90s.
+                  </p>
+                  <p style={{ marginBottom: 0 }}>
+                    <strong style={{ color: C.accent }}>Best moment:</strong> hole 6 — par 3, scrambled for par from green-side trouble. Proof the short game holds up when the driver doesn't.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div style={{
@@ -1213,10 +1247,16 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
                 fontWeight: 300, lineHeight: 1.8, opacity: 0.9,
                 paddingLeft: '18px', margin: 0
               }}>
-                <li>Driver: shorter backswing, aim for the fat part of the fairway — penalty shots are killing rounds.</li>
-                <li>Trouble management: take medicine when off the fairway. No hero shots on the back nine.</li>
-                <li>Pre-shot routine on every tee — the inconsistency back nine looks like tempo collapsing under pressure.</li>
-                <li>Wedges from new distance system (30–65 → 58° / 65–85 → 54° / 85–110 → A) should turn doubles into bogeys.</li>
+                {lastRound.aiAnalysis && Array.isArray(lastRound.aiAnalysis.focusForNextRound) && lastRound.aiAnalysis.focusForNextRound.length > 0 ? (
+                  lastRound.aiAnalysis.focusForNextRound.map((f, i) => <li key={i}>{f}</li>)
+                ) : (
+                  <>
+                    <li>Driver: shorter backswing, aim for the fat part of the fairway — penalty shots are killing rounds.</li>
+                    <li>Trouble management: take medicine when off the fairway. No hero shots on the back nine.</li>
+                    <li>Pre-shot routine on every tee — the inconsistency back nine looks like tempo collapsing under pressure.</li>
+                    <li>Wedges from new distance system (30–65 → 58° / 65–85 → 54° / 85–110 → A) should turn doubles into bogeys.</li>
+                  </>
+                )}
               </ul>
             </div>
 
@@ -1989,36 +2029,91 @@ function SectionIcon({ type, color, size = 28, scoreNumber, roundData }) {
 
 
 // ============================================================
-// NEW ROUND FORM - simplified: course name + scorecard image
+// NEW ROUND FORM - with optional AI analysis via Anthropic API
 // ============================================================
 function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
-  // Common Miami-area courses for quick suggestions
   const courseSuggestions = [
-    'Miami Beach',
-    'Normandy',
-    'Crandon',
-    'Biltmore',
-    'Shores',
-    'Lakes',
-    'Doral',
-    'International Links'
+    'Miami Beach', 'Normandy', 'Crandon', 'Biltmore',
+    'Shores', 'Lakes', 'Doral', 'International Links'
   ];
 
   const [courseName, setCourseName] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
   const [imageDataUrl, setImageDataUrl] = useState('');
+  const [imageMediaType, setImageMediaType] = useState('image/jpeg');
   const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // AI analysis state
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image too large. Max 5MB. Try compressing or taking a smaller photo.');
+      return;
+    }
+    setImageMediaType(file.type);
     const reader = new FileReader();
     reader.onload = (event) => {
       const dataUrl = event.target.result;
       setImagePreview(dataUrl);
       setImageDataUrl(dataUrl);
+      // Reset analysis if image changes
+      setAiAnalysis(null);
+      setAnalysisError(null);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleAnalyze = async () => {
+    if (!imageDataUrl || !courseName.trim()) {
+      alert('Please fill in course name and upload an image first.');
+      return;
+    }
+    setShowConfirmDialog(true);
+  };
+
+  const confirmAnalyze = async () => {
+    setShowConfirmDialog(false);
+    setAnalyzing(true);
+    setAnalysisError(null);
+
+    try {
+      // Extract base64 (strip data URL prefix)
+      const base64Match = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!base64Match) {
+        throw new Error('Invalid image data.');
+      }
+      const mediaType = base64Match[1];
+      const base64Data = base64Match[2];
+
+      const response = await fetch('/api/analyze-round', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: base64Data,
+          imageMediaType: mediaType,
+          courseName: courseName.trim()
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `Server returned ${response.status}`);
+      }
+
+      setAiAnalysis(data.analysis);
+    } catch (err) {
+      console.error('Analysis error:', err);
+      setAnalysisError(err.message || 'Analysis failed. Please try again.');
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleSave = () => {
@@ -2038,7 +2133,7 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
       date: now.toISOString().split('T')[0],
       dateDisplay: dateDisplay,
       coursePar: 72,
-      overPar: 0, // Will be set when AI analysis runs (or manually edited later)
+      overPar: 0,
       grossScore: 0,
       netScore: null,
       differential: null,
@@ -2048,7 +2143,7 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
       courseHandicap: 19,
       image: imageDataUrl,
       notes: '',
-      aiAnalysis: null // Reserved for future API integration
+      aiAnalysis: aiAnalysis  // Save analysis with the round
     };
     onSave(newRound);
   };
@@ -2083,7 +2178,7 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
         fontSize: '11px', letterSpacing: '0.3em',
         textTransform: 'uppercase', opacity: 0.6,
         fontFamily: sans, fontWeight: 500
-      }}>Course + scorecard. AI analysis coming next.</div>
+      }}>Course + scorecard + optional AI analysis</div>
       <div style={{ width: '40px', height: '2px', background: C.accent, marginTop: '18px', opacity: 0.7, marginBottom: '28px' }} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
@@ -2092,48 +2187,34 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
         <div>
           <label style={labelStyle}>Course Name</label>
           <div style={{ position: 'relative' }}>
-            <input type="text"
-              placeholder="Normandy"
+            <input type="text" placeholder="Normandy"
               value={courseName}
               onChange={(e) => { setCourseName(e.target.value); setShowSuggestions(true); }}
               onFocus={() => setShowSuggestions(true)}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
               style={inputBase} />
 
-            {/* Suggestion dropdown */}
             {showSuggestions && filteredSuggestions.length > 0 && (
               <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 4px)',
-                left: 0, right: 0,
-                background: '#173d63',
-                border: `1px solid ${C.accent}60`,
-                borderRadius: '6px',
-                overflow: 'hidden',
-                zIndex: 10,
+                position: 'absolute', top: 'calc(100% + 4px)',
+                left: 0, right: 0, background: '#173d63',
+                border: `1px solid ${C.accent}60`, borderRadius: '6px',
+                overflow: 'hidden', zIndex: 10,
                 boxShadow: '0 6px 24px rgba(0,0,0,0.5)'
               }}>
                 {filteredSuggestions.map((s, i) => (
                   <div key={i}
                     onMouseDown={() => { setCourseName(s); setShowSuggestions(false); }}
                     style={{
-                      padding: '11px 14px',
-                      fontFamily: sans, fontSize: '14px',
+                      padding: '11px 14px', fontFamily: sans, fontSize: '14px',
                       color: C.text, cursor: 'pointer',
-                      borderBottom: i < filteredSuggestions.length - 1 ? `1px solid ${C.border}` : 'none',
-                      transition: 'background 0.15s'
-                    }}
-                    onMouseOver={(e) => e.currentTarget.style.background = 'rgba(163,217,85,0.1)'}
-                    onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-                  >
+                      borderBottom: i < filteredSuggestions.length - 1 ? `1px solid ${C.border}` : 'none'
+                    }}>
                     {s}
                   </div>
                 ))}
               </div>
             )}
-          </div>
-          <div style={{ fontFamily: sans, fontSize: '11px', opacity: 0.5, marginTop: '6px' }}>
-            Will show in uppercase on the round card (e.g. NORMANDY)
           </div>
         </div>
 
@@ -2141,73 +2222,160 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
         <div>
           <label style={labelStyle}>Scorecard Image</label>
           <div style={{
-            border: `1px dashed ${C.accent}70`,
-            borderRadius: '8px',
-            padding: '24px',
-            textAlign: 'center',
-            cursor: 'pointer',
+            border: `1px dashed ${C.accent}70`, borderRadius: '8px',
+            padding: '24px', textAlign: 'center', cursor: 'pointer',
             position: 'relative',
-            background: imagePreview ? 'transparent' : 'rgba(0,0,0,0.18)',
-            transition: 'all 0.2s'
+            background: imagePreview ? 'transparent' : 'rgba(0,0,0,0.18)'
           }}>
             <input type="file" accept="image/*"
               onChange={handleImageUpload}
               style={{
-                position: 'absolute', inset: 0,
-                opacity: 0, cursor: 'pointer'
+                position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer'
               }} />
             {imagePreview ? (
               <>
                 <img src={imagePreview} alt="Scorecard preview"
                   style={{ maxWidth: '100%', borderRadius: '4px', display: 'block', margin: '0 auto' }} />
                 <div style={{
-                  marginTop: '12px', fontSize: '11px',
-                  color: C.accent, fontFamily: sans,
-                  letterSpacing: '0.2em', textTransform: 'uppercase',
-                  fontWeight: 500
-                }}>
-                  Tap to change image
-                </div>
+                  marginTop: '12px', fontSize: '11px', color: C.accent,
+                  fontFamily: sans, letterSpacing: '0.2em',
+                  textTransform: 'uppercase', fontWeight: 500
+                }}>Tap to change image</div>
               </>
             ) : (
               <>
-                <div style={{
-                  fontSize: '32px', color: C.accent,
-                  opacity: 0.7, marginBottom: '8px'
-                }}>📸</div>
-                <div style={{
-                  fontFamily: sans, fontSize: '14px',
-                  color: C.accent, fontWeight: 500
-                }}>
+                <div style={{ fontSize: '32px', color: C.accent, opacity: 0.7, marginBottom: '8px' }}>📸</div>
+                <div style={{ fontFamily: sans, fontSize: '14px', color: C.accent, fontWeight: 500 }}>
                   Tap to upload scorecard
                 </div>
-                <div style={{
-                  fontFamily: sans, fontSize: '11px',
-                  opacity: 0.5, marginTop: '4px'
-                }}>
-                  PNG or JPG from your camera roll
+                <div style={{ fontFamily: sans, fontSize: '11px', opacity: 0.5, marginTop: '4px' }}>
+                  PNG or JPG (max 5MB)
                 </div>
               </>
             )}
           </div>
         </div>
 
-        {/* Notice about AI analysis */}
-        <div style={{
-          background: 'rgba(163,217,85,0.06)',
-          border: `1px solid ${C.accent}30`,
-          borderRadius: '8px',
-          padding: '14px 16px',
-          display: 'flex', alignItems: 'flex-start', gap: '12px'
-        }}>
-          <div style={{ fontSize: '20px' }}>✨</div>
-          <div style={{
-            fontFamily: sans, fontSize: '12px',
-            fontWeight: 300, lineHeight: 1.6, opacity: 0.85
+        {/* AI Analysis Button */}
+        {imageDataUrl && courseName.trim() && !aiAnalysis && !analyzing && (
+          <button onClick={handleAnalyze} style={{
+            width: '100%',
+            background: 'linear-gradient(135deg, #a3d955 0%, #7eb53d 100%)',
+            border: 'none', color: C.bg, padding: '16px',
+            fontFamily: sans, fontSize: '13px',
+            letterSpacing: '0.18em', textTransform: 'uppercase',
+            fontWeight: 700, cursor: 'pointer', borderRadius: '8px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'
           }}>
-            AI Analysis will be added in the next update. For now, the round will be saved with the image and you'll see it on the home card.
+            <span style={{ fontSize: '18px' }}>✨</span>
+            Analyze with Claude
+          </button>
+        )}
+
+        {/* Analyzing state */}
+        {analyzing && (
+          <div style={{
+            background: 'rgba(163,217,85,0.08)',
+            border: `1px solid ${C.accent}40`,
+            borderRadius: '8px', padding: '20px',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '28px', marginBottom: '8px' }}>🤖</div>
+            <div style={{
+              fontFamily: sans, fontSize: '14px',
+              color: C.accent, fontWeight: 500, marginBottom: '4px'
+            }}>Analyzing your round...</div>
+            <div style={{
+              fontFamily: sans, fontSize: '12px',
+              opacity: 0.6, marginTop: '6px'
+            }}>Claude is reading the scorecard (~10-15 sec)</div>
           </div>
-        </div>
+        )}
+
+        {/* Error state */}
+        {analysisError && (
+          <div style={{
+            background: 'rgba(239,68,68,0.08)',
+            border: `1px solid rgba(239,68,68,0.4)`,
+            borderRadius: '8px', padding: '16px'
+          }}>
+            <div style={{
+              fontSize: '11px', letterSpacing: '0.2em',
+              textTransform: 'uppercase', color: '#ef4444',
+              fontFamily: sans, fontWeight: 600, marginBottom: '6px'
+            }}>Analysis failed</div>
+            <div style={{
+              fontFamily: sans, fontSize: '13px',
+              fontWeight: 300, lineHeight: 1.5, opacity: 0.9
+            }}>{analysisError}</div>
+            <button onClick={() => { setAnalysisError(null); }} style={{
+              marginTop: '12px', background: 'transparent',
+              border: `1px solid ${C.border}`, color: C.text,
+              padding: '8px 16px', fontFamily: sans, fontSize: '11px',
+              letterSpacing: '0.15em', textTransform: 'uppercase',
+              cursor: 'pointer', borderRadius: '4px'
+            }}>Dismiss</button>
+          </div>
+        )}
+
+        {/* Analysis Result preview */}
+        {aiAnalysis && (
+          <div style={{
+            background: 'rgba(163,217,85,0.06)',
+            border: `1px solid ${C.accent}40`,
+            borderRadius: '8px', padding: '20px'
+          }}>
+            <div style={{
+              fontSize: '11px', letterSpacing: '0.3em',
+              textTransform: 'uppercase', color: C.accent,
+              fontFamily: sans, marginBottom: '14px', fontWeight: 500,
+              display: 'flex', alignItems: 'center', gap: '8px'
+            }}>
+              ✨ Analysis Complete
+            </div>
+            {aiAnalysis.reading && (
+              <div style={{
+                fontFamily: sans, fontSize: '13px',
+                fontWeight: 300, lineHeight: 1.6, opacity: 0.92,
+                marginBottom: '14px'
+              }}>
+                {aiAnalysis.reading}
+              </div>
+            )}
+            {aiAnalysis.tigerFiveCount && (
+              <div style={{
+                fontFamily: sans, fontSize: '12px',
+                fontWeight: 400, opacity: 0.8, marginBottom: '14px',
+                fontStyle: 'italic'
+              }}>
+                {aiAnalysis.tigerFiveCount}
+              </div>
+            )}
+            {Array.isArray(aiAnalysis.focusForNextRound) && aiAnalysis.focusForNextRound.length > 0 && (
+              <>
+                <div style={{
+                  fontSize: '10px', letterSpacing: '0.25em',
+                  textTransform: 'uppercase', color: C.accent,
+                  fontFamily: sans, marginBottom: '8px', fontWeight: 500
+                }}>Focus for next round</div>
+                <ul style={{
+                  fontFamily: sans, fontSize: '12px',
+                  fontWeight: 300, lineHeight: 1.6, opacity: 0.9,
+                  paddingLeft: '16px', margin: 0
+                }}>
+                  {aiAnalysis.focusForNextRound.map((f, i) => <li key={i}>{f}</li>)}
+                </ul>
+              </>
+            )}
+            <div style={{
+              fontFamily: sans, fontSize: '10px',
+              opacity: 0.5, marginTop: '14px',
+              fontStyle: 'italic'
+            }}>
+              Analysis saved with this round.
+            </div>
+          </div>
+        )}
 
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
@@ -2219,8 +2387,7 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
             fontWeight: 600, cursor: 'pointer', borderRadius: '6px'
           }}>Save Round</button>
           <button onClick={onCancel} style={{
-            background: 'transparent',
-            border: `1px solid ${C.border}`,
+            background: 'transparent', border: `1px solid ${C.border}`,
             color: C.text, padding: '14px 22px',
             fontFamily: sans, fontSize: '12px',
             letterSpacing: '0.2em', textTransform: 'uppercase',
@@ -2228,6 +2395,56 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
           }}>Cancel</button>
         </div>
       </div>
+
+      {/* Confirmation Dialog for AI Analysis */}
+      {showConfirmDialog && (
+        <div onClick={() => setShowConfirmDialog(false)} style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '20px', zIndex: 1000
+        }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: C.bg2, border: `1px solid ${C.accent}40`,
+            borderRadius: '12px', padding: '28px',
+            maxWidth: '380px', width: '100%'
+          }}>
+            <div style={{
+              fontSize: '20px', fontStyle: 'italic',
+              marginBottom: '12px', color: C.text
+            }}>Analyze with Claude?</div>
+            <div style={{
+              fontFamily: sans, fontSize: '14px',
+              fontWeight: 300, lineHeight: 1.6, opacity: 0.85,
+              marginBottom: '20px'
+            }}>
+              Claude will read your scorecard and provide personalized analysis based on your improvement areas, DECADE framework, and Tiger Five.
+              <br /><br />
+              <strong style={{ color: C.accent }}>Cost: ~$0.01 of credits</strong>
+              <br />
+              <span style={{ fontSize: '11px', opacity: 0.6 }}>
+                Daily limit: 5 analyses · 30s between requests
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={confirmAnalyze} style={{
+                flex: 1, background: C.accent, border: 'none',
+                color: C.bg, padding: '12px',
+                fontFamily: sans, fontSize: '12px',
+                letterSpacing: '0.18em', textTransform: 'uppercase',
+                fontWeight: 700, cursor: 'pointer', borderRadius: '6px'
+              }}>Yes, Analyze</button>
+              <button onClick={() => setShowConfirmDialog(false)} style={{
+                background: 'transparent', border: `1px solid ${C.border}`,
+                color: C.text, padding: '12px 20px',
+                fontFamily: sans, fontSize: '12px',
+                letterSpacing: '0.18em', textTransform: 'uppercase',
+                cursor: 'pointer', borderRadius: '6px', opacity: 0.7
+              }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
