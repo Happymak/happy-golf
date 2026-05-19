@@ -19,9 +19,13 @@ export default function GolfApp() {
   const [fontScale, setFontScale] = useState(1);
   const [roundImageFullscreen, setRoundImageFullscreen] = useState(false);
   const [showRoundForm, setShowRoundForm] = useState(false);
+  const [showHandicapForm, setShowHandicapForm] = useState(false);
+  const [expandedRound, setExpandedRound] = useState(null); // for rounds history
+  const [roundsSection, setRoundsSection] = useState('last'); // 'last' | 'handicap' | 'history'
 
-  // Latest round - full object instead of just score
+  // Default round (the May 13 baseline that ships with the app)
   const defaultRound = {
+    id: 'seed-2026-05-13',
     courseShort: 'NORMANDY',
     courseFull: 'Miami Beach Golf Club',
     date: '2026-05-13',
@@ -35,10 +39,18 @@ export default function GolfApp() {
     yards: 6430,
     slope: 138,
     courseHandicap: 19,
-    image: '/round-may13.png', // path or data URL
-    notes: ''
+    image: '/round-may13.png',
+    notes: '',
+    aiAnalysis: null
   };
-  const [lastRound, setLastRound] = useState(defaultRound);
+
+  // Rounds: array, sorted newest first. Index 0 = most recent.
+  const [rounds, setRounds] = useState([defaultRound]);
+  // Handicap cards: array of { id, date, dateDisplay, handicapIndex, image, notes }
+  const [handicapCards, setHandicapCards] = useState([]);
+
+  // Convenience: latest round
+  const lastRound = rounds[0] || defaultRound;
 
   const [mantraText, setMantraText] = useState('');
   const [quoteIdx, setQuoteIdx] = useState(0);
@@ -71,48 +83,136 @@ My focus for every round:
 
 I'm lucky to be playing this game.`;
 
-  // ============== STORAGE ==============
+  // ============== STORAGE: localStorage + Vercel KV auto-sync ==============
+  // localStorage is the primary (instant, offline-friendly).
+  // Vercel KV mirrors it in the cloud, so the app survives clearing Safari data.
+
+  const STORAGE_KEY = 'happy-golf-v2';
+  const KV_KEY = 'happy-golf-main';
+  const [kvSyncing, setKvSyncing] = useState(false);
+  const [lastKvSync, setLastKvSync] = useState(null);
+
+  // Debounced KV save (avoids hammering on every keystroke)
+  const kvSaveTimeoutRef = useRef(null);
+
+  // Migration: if old 'lastRound' exists in localStorage, convert to 'rounds' array
+  const migrateState = (parsed) => {
+    if (parsed && parsed.lastRound && !parsed.rounds) {
+      parsed.rounds = [{ ...parsed.lastRound, id: parsed.lastRound.id || 'migrated-' + Date.now() }];
+      delete parsed.lastRound;
+    }
+    if (parsed && !parsed.handicapCards) parsed.handicapCards = [];
+    if (parsed && !parsed.rounds) parsed.rounds = [];
+    return parsed;
+  };
+
+  // Try to restore from Vercel KV first, fall back to localStorage
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('happy-golf-v2');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setMantraText(parsed.mantraText !== undefined ? parsed.mantraText : defaultMantra);
-        setPracticeLog(parsed.practiceLog || []);
-        if (parsed.fontScale) setFontScale(parsed.fontScale);
-        if (parsed.lastRound) setLastRound(parsed.lastRound);
-      } else {
-        setMantraText(defaultMantra);
-        const todaySession = {
-          id: Date.now(),
-          date: new Date().toISOString().split('T')[0],
-          type: 'indoor',
-          duration: '120',
-          areas: 'Wedges 30–110 yds, Short & Mid Irons, Long Game (Driver + 3w + 5w + 4h), Pre-Shot Routine',
-          sensations: `Wedge distance system (Trackman): 30–65 yds → 58° | 65–85 yds → 54° | 85–110 yds → A wedge.
+    let cancelled = false;
+
+    const restore = async () => {
+      let restored = null;
+
+      // First, try localStorage for instant load
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) restored = migrateState(JSON.parse(saved));
+      } catch (e) {}
+
+      if (restored) applyRestoredState(restored);
+      else {
+        // No local state - this is first install
+        applyRestoredState({ firstInstall: true });
+      }
+
+      // Then, try Vercel KV (may have newer data from another device)
+      try {
+        const res = await fetch('/api/storage?key=' + KV_KEY);
+        if (res.ok && !cancelled) {
+          const json = await res.json();
+          if (json && json.value) {
+            const cloudState = migrateState(json.value);
+            const cloudTs = cloudState.lastModified || 0;
+            const localTs = restored?.lastModified || 0;
+            // Only override if cloud is newer
+            if (cloudTs > localTs) {
+              applyRestoredState(cloudState);
+              setLastKvSync(Date.now());
+            }
+          }
+        }
+      } catch (e) {
+        // Silent fail - KV not available, work in offline mode
+      }
+    };
+
+    restore();
+    return () => { cancelled = true; };
+  }, []);
+
+  const applyRestoredState = (state) => {
+    if (state.firstInstall) {
+      setMantraText(defaultMantra);
+      const todaySession = {
+        id: Date.now(),
+        date: new Date().toISOString().split('T')[0],
+        type: 'indoor',
+        duration: '120',
+        areas: 'Wedges 30–110 yds, Short & Mid Irons, Long Game (Driver + 3w + 5w + 4h), Pre-Shot Routine',
+        sensations: `Wedge distance system (Trackman): 30–65 yds → 58° | 65–85 yds → 54° | 85–110 yds → A wedge.
 
 Irons: Need to compress more — stop hitting up at the ball, focus on compressing forward. Drop the ball flight. More weight on the front foot, improve the weight shift.
 
 Driver: A slightly shorter backswing produces cleaner contact. Best result: a controlled draw of 290+ yds.
 
 Woods: Still inconsistent — swing feels unstable. Need to identify the cause in a future session.`,
-          nextFocus: 'Iron compression — lower ball flight, hit through and forward. Driver — keep backswing controlled, replicate the draw. Diagnose what\'s breaking the wood swings.'
-        };
-        setPracticeLog([todaySession]);
-      }
-    } catch (e) {}
-  }, []);
+        nextFocus: 'Iron compression — lower ball flight, hit through and forward. Driver — keep backswing controlled, replicate the draw. Diagnose what\'s breaking the wood swings.'
+      };
+      setPracticeLog([todaySession]);
+      return;
+    }
+    setMantraText(state.mantraText !== undefined ? state.mantraText : defaultMantra);
+    setPracticeLog(state.practiceLog || []);
+    if (state.fontScale) setFontScale(state.fontScale);
+    if (state.rounds && state.rounds.length > 0) setRounds(state.rounds);
+    if (state.handicapCards) setHandicapCards(state.handicapCards);
+  };
 
   const saveState = (updates = {}) => {
+    const state = {
+      mantraText: updates.mantraText ?? mantraText,
+      practiceLog: updates.practiceLog ?? practiceLog,
+      fontScale: updates.fontScale ?? fontScale,
+      rounds: updates.rounds ?? rounds,
+      handicapCards: updates.handicapCards ?? handicapCards,
+      lastModified: Date.now()
+    };
+    // 1. Save to localStorage immediately
     try {
-      const state = {
-        mantraText: updates.mantraText ?? mantraText,
-        practiceLog: updates.practiceLog ?? practiceLog,
-        fontScale: updates.fontScale ?? fontScale,
-        lastRound: updates.lastRound ?? lastRound
-      };
-      localStorage.setItem('happy-golf-v2', JSON.stringify(state));
-    } catch (e) {}
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      // Quota might be exceeded - warn but don't crash
+      console.warn('localStorage save failed:', e);
+    }
+    // 2. Debounced save to Vercel KV (cloud backup)
+    if (kvSaveTimeoutRef.current) clearTimeout(kvSaveTimeoutRef.current);
+    kvSaveTimeoutRef.current = setTimeout(() => syncToKV(state), 2000);
+  };
+
+  const syncToKV = async (state) => {
+    try {
+      setKvSyncing(true);
+      const res = await fetch('/api/storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: KV_KEY, value: state })
+      });
+      if (res.ok) setLastKvSync(Date.now());
+    } catch (e) {
+      // Silent fail - localStorage is the source of truth
+    } finally {
+      setKvSyncing(false);
+    }
   };
 
   // ============== SOUND: Golf ball dropping in hole ==============
@@ -347,9 +447,10 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
   const sans = "'Inter', 'Helvetica Neue', sans-serif";
 
   // ============== ROUTING HELPERS ==============
-  const goHome = () => { setView('home'); setAreaView(null); setPracticeView(null); setShowWaldron(false); setShowRoundForm(false); };
+  const goHome = () => { setView('home'); setAreaView(null); setPracticeView(null); setShowWaldron(false); setShowRoundForm(false); setShowHandicapForm(false); };
   const goBack = () => {
     if (showRoundForm) { setShowRoundForm(false); return; }
+    if (showHandicapForm) { setShowHandicapForm(false); return; }
     if (showWaldron) { setShowWaldron(false); return; }
     if (areaView) { setAreaView(null); return; }
     if (practiceView) { setPracticeView(null); return; }
@@ -1113,164 +1214,204 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
         )}
 
         {/* ========== LATEST ROUND ========== */}
-        {view === 'round' && !showRoundForm && (
-          <SectionHeader title="Latest Golf Round" subtitle={`${lastRound.dateDisplay} · ${lastRound.courseFull}`} iconType="round" roundData={lastRound} C={C} serif={serif} sans={sans}>
 
-            {/* Action bar — New Round button */}
-            <div style={{ marginBottom: '18px' }}>
-              <button onClick={() => setShowRoundForm(true)} style={{
-                width: '100%', background: 'transparent',
-                border: `1px dashed ${C.accent}70`,
-                color: C.accent, padding: '14px',
-                fontFamily: sans, fontSize: '12px',
-                letterSpacing: '0.2em', textTransform: 'uppercase',
-                cursor: 'pointer', borderRadius: '8px',
-                fontWeight: 500
-              }}>+ Log New Round</button>
-            </div>
+        {/* ========== ROUNDS (Last + Handicap Card + History) ========== */}
+        {view === 'round' && !showRoundForm && !showHandicapForm && (
+          <SectionHeader title="Rounds" subtitle="Last · Handicap card · History" iconType="round" roundData={lastRound} C={C} serif={serif} sans={sans}>
 
-            <div
-              onClick={() => setRoundImageFullscreen(true)}
-              style={{
-                borderRadius: '8px',
-                overflow: 'hidden',
-                border: `1px solid ${C.border}`,
-                marginBottom: '20px',
-                background: '#ffffff',
-                cursor: 'pointer',
-                position: 'relative'
-              }}>
-              <img src={lastRound.image} alt={`${lastRound.courseFull} scorecard - ${lastRound.dateDisplay}`}
-                   style={{ width: '100%', display: 'block' }} />
-              <div style={{
-                position: 'absolute', top: '8px', right: '8px',
-                background: 'rgba(14,42,71,0.85)',
-                color: '#ffffff',
-                padding: '6px 10px',
-                borderRadius: '4px',
-                fontFamily: sans, fontSize: '10px',
-                letterSpacing: '0.15em', textTransform: 'uppercase',
-                fontWeight: 500,
-                display: 'flex', alignItems: 'center', gap: '6px'
-              }}>
-                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 2 L5 2 M2 2 L2 5 M10 2 L7 2 M10 2 L10 5 M2 10 L5 10 M2 10 L2 7 M10 10 L7 10 M10 10 L10 7"
-                        stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round"/>
-                </svg>
-                Tap to expand
+            {/* === LAST ROUND ACCORDION === */}
+            <AccordionSection
+              title="Last Round"
+              subtitle={`${lastRound.dateDisplay} · ${lastRound.courseFull} · Score ${lastRound.grossScore}`}
+              defaultOpen={roundsSection === 'last'}
+              C={C} sans={sans} serif={serif}
+            >
+              {/* + Log New Round button */}
+              <div style={{ marginBottom: '18px' }}>
+                <button onClick={() => setShowRoundForm(true)} style={{
+                  width: '100%', background: 'transparent',
+                  border: `1px dashed ${C.accent}70`,
+                  color: C.accent, padding: '14px',
+                  fontFamily: sans, fontSize: '12px',
+                  letterSpacing: '0.2em', textTransform: 'uppercase',
+                  cursor: 'pointer', borderRadius: '8px',
+                  fontWeight: 500
+                }}>+ Log New Round</button>
               </div>
-            </div>
 
-            {/* Takeaways */}
-            <div style={{
-              background: `linear-gradient(135deg, rgba(163,217,85,0.06) 0%, rgba(0,0,0,0.25) 100%)`,
-              border: `1px solid ${C.accent}40`,
-              borderRadius: '8px',
-              padding: '22px 24px',
-              marginBottom: '18px'
-            }}>
-              <div style={{
-                fontSize: '11px', letterSpacing: '0.3em',
-                textTransform: 'uppercase', color: C.accent,
-                fontFamily: sans, marginBottom: '14px', fontWeight: 500,
-                display: 'flex', alignItems: 'center', gap: '8px'
-              }}>
-                {lastRound.aiAnalysis ? '✨ Reading the Round' : 'Reading the Round'}
+              <RoundDetail round={lastRound} onImageClick={() => setRoundImageFullscreen(true)} C={C} sans={sans} serif={serif} s={s} />
+            </AccordionSection>
+
+            {/* === HANDICAP CARD ACCORDION === */}
+            <AccordionSection
+              title="Handicap Card"
+              subtitle={handicapCards.length > 0
+                ? `Current: ${handicapCards[0].handicapIndex} · ${handicapCards[0].dateDisplay}`
+                : 'Not added yet'}
+              defaultOpen={roundsSection === 'handicap'}
+              C={C} sans={sans} serif={serif}
+            >
+              <div style={{ marginBottom: '18px' }}>
+                <button onClick={() => setShowHandicapForm(true)} style={{
+                  width: '100%', background: 'transparent',
+                  border: `1px dashed ${C.accent}70`,
+                  color: C.accent, padding: '14px',
+                  fontFamily: sans, fontSize: '12px',
+                  letterSpacing: '0.2em', textTransform: 'uppercase',
+                  cursor: 'pointer', borderRadius: '8px',
+                  fontWeight: 500
+                }}>+ Add Handicap Card</button>
               </div>
-              {lastRound.aiAnalysis ? (
+
+              {handicapCards.length === 0 ? (
                 <div style={{
                   fontFamily: sans, fontSize: `${s(14)}px`,
-                  fontWeight: 300, lineHeight: 1.7, opacity: 0.9
+                  opacity: 0.6, lineHeight: 1.6,
+                  padding: '10px 0', textAlign: 'center'
                 }}>
-                  <div style={{ whiteSpace: 'pre-wrap', marginBottom: lastRound.aiAnalysis.tigerFiveCount ? '14px' : 0 }}>
-                    {lastRound.aiAnalysis.reading}
-                  </div>
-                  {lastRound.aiAnalysis.tigerFiveCount && (
-                    <div style={{
-                      fontStyle: 'italic', opacity: 0.85,
-                      paddingTop: '12px',
-                      borderTop: `1px solid ${C.border}`
-                    }}>
-                      <strong style={{ color: C.text, fontStyle: 'normal' }}>Tiger Five count: </strong>
-                      {lastRound.aiAnalysis.tigerFiveCount}
-                    </div>
-                  )}
-                  {Array.isArray(lastRound.aiAnalysis.areaConnections) && lastRound.aiAnalysis.areaConnections.length > 0 && (
-                    <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${C.border}` }}>
-                      <div style={{
-                        fontSize: '10px', letterSpacing: '0.25em',
-                        textTransform: 'uppercase', color: C.accent,
-                        marginBottom: '8px', fontWeight: 500
-                      }}>Connection to Q2 Areas</div>
-                      <ul style={{ paddingLeft: '16px', margin: 0 }}>
-                        {lastRound.aiAnalysis.areaConnections.map((a, i) => <li key={i}>{a}</li>)}
-                      </ul>
-                    </div>
-                  )}
+                  Upload your USGA handicap card (typically generated the day after a round) to track your handicap index over time.
                 </div>
               ) : (
-                <div style={{
-                  fontFamily: sans, fontSize: `${s(14)}px`,
-                  fontWeight: 300, lineHeight: 1.7, opacity: 0.9
-                }}>
-                  <p style={{ marginTop: 0 }}>
-                    Front nine (49) much stronger than the back (53). The back fell apart with three 6s and a 7 in five holes — a stretch of compounding mistakes that DECADE would call avoidable.
-                  </p>
-                  <p>
-                    Tee accuracy dropped from <strong style={{ color: C.text }}>89% out → 33% in</strong>. The driver was the leak. This matches the Q2 area of improvement — recover driver consistency.
-                  </p>
-                  <p>
-                    <strong style={{ color: C.text }}>The Tiger Five count:</strong> 4 double bogeys, a triple, plus penalties on 7 holes. Eliminating the doubles alone would have put the round in the mid-90s.
-                  </p>
-                  <p style={{ marginBottom: 0 }}>
-                    <strong style={{ color: C.accent }}>Best moment:</strong> hole 6 — par 3, scrambled for par from green-side trouble. Proof the short game holds up when the driver doesn't.
-                  </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {handicapCards.map((card, i) => (
+                    <div key={card.id} style={{
+                      background: 'rgba(0,0,0,0.22)',
+                      border: `1px solid ${i === 0 ? C.accent + '40' : C.border}`,
+                      borderRadius: '8px',
+                      padding: '16px',
+                      cursor: card.image ? 'pointer' : 'default'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                        <div>
+                          <div style={{ fontSize: `${s(22)}px`, fontStyle: 'italic', color: i === 0 ? C.accent : C.text }}>
+                            {card.handicapIndex}
+                          </div>
+                          <div style={{
+                            fontSize: '10px', letterSpacing: '0.25em',
+                            textTransform: 'uppercase', opacity: 0.6,
+                            fontFamily: sans, marginTop: '4px', fontWeight: 500
+                          }}>{card.dateDisplay}</div>
+                        </div>
+                        {i === 0 && (
+                          <div style={{
+                            fontSize: '9px', letterSpacing: '0.2em',
+                            textTransform: 'uppercase', color: C.accent,
+                            fontFamily: sans, fontWeight: 600,
+                            border: `1px solid ${C.accent}50`,
+                            padding: '3px 8px', borderRadius: '3px'
+                          }}>CURRENT</div>
+                        )}
+                      </div>
+                      {card.image && (
+                        <img src={card.image} alt="Handicap card"
+                          style={{ width: '100%', borderRadius: '4px', marginTop: '10px', cursor: 'pointer' }} />
+                      )}
+                      {card.notes && (
+                        <div style={{
+                          fontFamily: sans, fontSize: `${s(12)}px`,
+                          opacity: 0.8, marginTop: '10px', lineHeight: 1.5
+                        }}>{card.notes}</div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
+            </AccordionSection>
 
-            <div style={{
-              background: 'rgba(0,0,0,0.25)',
-              border: `1px solid ${C.accent}50`,
-              borderRadius: '8px',
-              padding: '20px 22px'
-            }}>
-              <div style={{
-                fontSize: '11px', letterSpacing: '0.3em',
-                textTransform: 'uppercase', color: C.accent,
-                fontFamily: sans, marginBottom: '12px', fontWeight: 500
-              }}>
-                Focus for next round
-              </div>
-              <ul style={{
-                fontFamily: sans, fontSize: `${s(14)}px`,
-                fontWeight: 300, lineHeight: 1.8, opacity: 0.9,
-                paddingLeft: '18px', margin: 0
-              }}>
-                {lastRound.aiAnalysis && Array.isArray(lastRound.aiAnalysis.focusForNextRound) && lastRound.aiAnalysis.focusForNextRound.length > 0 ? (
-                  lastRound.aiAnalysis.focusForNextRound.map((f, i) => <li key={i}>{f}</li>)
-                ) : (
-                  <>
-                    <li>Driver: shorter backswing, aim for the fat part of the fairway — penalty shots are killing rounds.</li>
-                    <li>Trouble management: take medicine when off the fairway. No hero shots on the back nine.</li>
-                    <li>Pre-shot routine on every tee — the inconsistency back nine looks like tempo collapsing under pressure.</li>
-                    <li>Wedges from new distance system (30–65 → 58° / 65–85 → 54° / 85–110 → A) should turn doubles into bogeys.</li>
-                  </>
-                )}
-              </ul>
-            </div>
+            {/* === ROUNDS HISTORY ACCORDION === */}
+            <AccordionSection
+              title="Rounds History"
+              subtitle={rounds.length > 1
+                ? `${rounds.length - 1} previous round${rounds.length > 2 ? 's' : ''}`
+                : 'No previous rounds yet'}
+              defaultOpen={roundsSection === 'history'}
+              C={C} sans={sans} serif={serif}
+            >
+              {rounds.length <= 1 ? (
+                <div style={{
+                  fontFamily: sans, fontSize: `${s(14)}px`,
+                  opacity: 0.6, lineHeight: 1.6,
+                  padding: '10px 0', textAlign: 'center'
+                }}>
+                  As you log new rounds, previous ones will appear here.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {rounds.slice(1).map((r, i) => (
+                    <div key={r.id || i}
+                      onClick={() => setExpandedRound(expandedRound === r.id ? null : r.id)}
+                      style={{
+                        background: 'rgba(0,0,0,0.22)',
+                        border: `1px solid ${C.border}`,
+                        borderRadius: '8px',
+                        padding: '14px 16px',
+                        cursor: 'pointer'
+                      }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: `${s(17)}px`, fontStyle: 'italic', color: C.text }}>
+                            {r.courseFull}
+                          </div>
+                          <div style={{
+                            fontSize: '10px', letterSpacing: '0.22em',
+                            textTransform: 'uppercase', opacity: 0.6,
+                            fontFamily: sans, marginTop: '4px', fontWeight: 500
+                          }}>{r.dateDisplay}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: `${s(24)}px`, fontStyle: 'italic', color: C.accent }}>
+                            {r.grossScore || '—'}
+                          </div>
+                          <div style={{
+                            fontSize: '9px', letterSpacing: '0.18em',
+                            textTransform: 'uppercase', opacity: 0.55,
+                            fontFamily: sans, marginTop: '2px'
+                          }}>GROSS</div>
+                        </div>
+                      </div>
+                      {expandedRound === r.id && (
+                        <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: `1px solid ${C.border}` }}>
+                          <RoundDetail round={r} onImageClick={null} C={C} sans={sans} serif={serif} s={s} compact={true} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </AccordionSection>
 
           </SectionHeader>
         )}
+
+
 
         {/* ========== NEW ROUND FORM ========== */}
         {view === 'round' && showRoundForm && (
           <NewRoundForm
             onCancel={() => setShowRoundForm(false)}
             onSave={(newRound) => {
-              setLastRound(newRound);
-              saveState({ lastRound: newRound });
+              const roundWithId = { ...newRound, id: 'round-' + Date.now() };
+              const updatedRounds = [roundWithId, ...rounds];
+              setRounds(updatedRounds);
+              saveState({ rounds: updatedRounds });
               setShowRoundForm(false);
+              setRoundsSection('last');
+            }}
+            C={C} serif={serif} sans={sans}
+          />
+        )}
+
+        {/* ========== NEW HANDICAP CARD FORM ========== */}
+        {view === 'round' && showHandicapForm && (
+          <NewHandicapCardForm
+            onCancel={() => setShowHandicapForm(false)}
+            onSave={(card) => {
+              const cardWithId = { ...card, id: 'hc-' + Date.now() };
+              const updatedCards = [cardWithId, ...handicapCards];
+              setHandicapCards(updatedCards);
+              saveState({ handicapCards: updatedCards });
+              setShowHandicapForm(false);
+              setRoundsSection('handicap');
             }}
             C={C} serif={serif} sans={sans}
           />
@@ -1390,6 +1531,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap');
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.85); } }
 
         /* Lock the page so iOS doesn't rubber-band when content fits */
         html, body {
@@ -2031,6 +2173,100 @@ function SectionIcon({ type, color, size = 28, scoreNumber, roundData }) {
 // ============================================================
 // NEW ROUND FORM - with optional AI analysis via Anthropic API
 // ============================================================
+// ============================================================
+// VOICE INPUT BUTTON — uses Web Speech API (iOS Safari compatible)
+// Tap once to start recording, tap again to stop. Appends to value.
+// ============================================================
+function VoiceButton({ onTranscript, C, sans }) {
+  const [recording, setRecording] = useState(false);
+  const [supported, setSupported] = useState(true);
+  const recognitionRef = useRef(null);
+
+  useEffect(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setSupported(false);
+      return;
+    }
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    // Default language: auto-detect based on user — but Spanish-English is common
+    // We'll use 'en-US' as default (handles Spanglish reasonably)
+    recognition.lang = navigator.language || 'en-US';
+
+    recognition.onresult = (event) => {
+      let final = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          final += event.results[i][0].transcript + ' ';
+        }
+      }
+      if (final.trim()) onTranscript(final.trim());
+    };
+
+    recognition.onerror = (e) => {
+      console.warn('Speech recognition error:', e.error);
+      setRecording(false);
+    };
+
+    recognition.onend = () => {
+      setRecording(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      try { recognition.stop(); } catch (e) {}
+    };
+  }, []);
+
+  const toggle = () => {
+    if (!supported || !recognitionRef.current) return;
+    if (recording) {
+      try { recognitionRef.current.stop(); } catch (e) {}
+      setRecording(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setRecording(true);
+      } catch (e) {
+        // Already started
+      }
+    }
+  };
+
+  if (!supported) {
+    return null; // Hide button if browser doesn't support
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      style={{
+        background: recording ? '#ef4444' : 'transparent',
+        border: `1px solid ${recording ? '#ef4444' : C.border}`,
+        color: recording ? '#ffffff' : C.accent,
+        padding: '8px 14px',
+        fontFamily: sans, fontSize: '11px',
+        letterSpacing: '0.18em', textTransform: 'uppercase',
+        cursor: 'pointer', borderRadius: '6px',
+        fontWeight: 500,
+        display: 'inline-flex', alignItems: 'center', gap: '6px',
+        transition: 'all 0.2s'
+      }}
+      title={recording ? 'Tap to stop dictating' : 'Tap to dictate'}
+    >
+      <span style={{
+        fontSize: '14px',
+        animation: recording ? 'pulse 1.2s infinite' : 'none'
+      }}>{recording ? '🔴' : '🎤'}</span>
+      {recording ? 'Stop' : 'Dictate'}
+    </button>
+  );
+}
+
 function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
   const courseSuggestions = [
     'Miami Beach', 'Normandy', 'Crandon', 'Biltmore',
@@ -2063,8 +2299,8 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        // Draw to canvas, scale down if too big (max 1600px on long side)
-        const maxDim = 1600;
+        // Draw to canvas, scale down if too big (max 1200px on long side, 75% quality)
+        const maxDim = 1200;
         let { width, height } = img;
         if (width > maxDim || height > maxDim) {
           if (width > height) {
@@ -2082,8 +2318,8 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
-        // Convert to JPEG (handles HEIC, PNG, anything)
-        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        // Convert to JPEG at 75% quality - balance between size and readability of scorecard text
+        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.75);
         setImagePreview(jpegDataUrl);
         setImageDataUrl(jpegDataUrl);
         setImageMediaType('image/jpeg');
@@ -2304,7 +2540,13 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
         {/* My Observations (optional) - shows after image is uploaded */}
         {imageDataUrl && (
           <div>
-            <label style={labelStyle}>My observations (optional)</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label style={{ ...labelStyle, marginBottom: 0 }}>My observations (optional)</label>
+              <VoiceButton
+                onTranscript={(text) => setUserObservations(prev => (prev ? prev + ' ' : '') + text)}
+                C={C} sans={sans}
+              />
+            </div>
             <textarea
               placeholder="e.g. Hit too many fairways on the back. Need to sharpen short game. Felt tense on the back nine. Driver lost direction after hole 12..."
               value={userObservations}
@@ -2321,7 +2563,7 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
               fontFamily: sans, fontSize: '11px',
               opacity: 0.55, marginTop: '6px', lineHeight: 1.5
             }}>
-              Sensations, weather, what felt off, what worked — anything the scorecard alone won't show. This helps Claude give you a better analysis.
+              Sensations, weather, what felt off, what worked — anything the scorecard alone won't show. Tap 🎤 to dictate in Spanglish.
             </div>
           </div>
         )}
@@ -2563,4 +2805,354 @@ function AreaIcon({ type, color, size = 30 }) {
   }
 
   return null;
+}
+
+// ============================================================
+// ACCORDION SECTION
+// ============================================================
+function AccordionSection({ title, subtitle, defaultOpen, children, C, sans, serif }) {
+  const [open, setOpen] = useState(defaultOpen || false);
+  return (
+    <div style={{ marginBottom: '14px' }}>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{
+          background: open ? 'rgba(163,217,85,0.06)' : 'rgba(255,255,255,0.03)',
+          border: `1px solid ${open ? C.accent + '40' : C.border}`,
+          borderRadius: '10px',
+          padding: '16px 18px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          transition: 'all 0.2s'
+        }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '20px', fontStyle: 'italic', color: C.text }}>{title}</div>
+          {subtitle && (
+            <div style={{
+              fontSize: '11px', letterSpacing: '0.22em',
+              textTransform: 'uppercase', opacity: 0.6,
+              fontFamily: sans, marginTop: '4px', fontWeight: 500
+            }}>{subtitle}</div>
+          )}
+        </div>
+        <div style={{
+          fontSize: '22px', color: C.accent,
+          opacity: 0.7,
+          transition: 'transform 0.2s',
+          transform: open ? 'rotate(180deg)' : 'rotate(0deg)'
+        }}>⌄</div>
+      </div>
+      {open && (
+        <div style={{
+          padding: '20px 4px 4px',
+          animation: 'fadeIn 0.3s'
+        }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// ROUND DETAIL — used in Last Round and in expanded History items
+// ============================================================
+function RoundDetail({ round, onImageClick, C, sans, serif, s, compact }) {
+  return (
+    <>
+      {/* Scorecard image */}
+      {round.image && (
+        <div
+          onClick={onImageClick}
+          style={{
+            borderRadius: '8px',
+            overflow: 'hidden',
+            border: `1px solid ${C.border}`,
+            marginBottom: '20px',
+            background: '#ffffff',
+            cursor: onImageClick ? 'pointer' : 'default',
+            position: 'relative'
+          }}>
+          <img src={round.image} alt={`${round.courseFull} scorecard - ${round.dateDisplay}`}
+               style={{ width: '100%', display: 'block' }} />
+          {onImageClick && (
+            <div style={{
+              position: 'absolute', bottom: '8px', right: '8px',
+              background: 'rgba(14,42,71,0.9)', color: C.accent,
+              padding: '5px 10px', borderRadius: '4px',
+              fontFamily: sans, fontSize: '9px',
+              letterSpacing: '0.18em', textTransform: 'uppercase',
+              fontWeight: 500
+            }}>↻ Tap to enlarge</div>
+          )}
+        </div>
+      )}
+
+      {/* User observations (if any) */}
+      {round.notes && (
+        <div style={{
+          background: 'rgba(0,0,0,0.18)',
+          borderLeft: `3px solid ${C.accent}80`,
+          borderRadius: '0 6px 6px 0',
+          padding: '12px 16px',
+          marginBottom: '18px'
+        }}>
+          <div style={{
+            fontSize: '10px', letterSpacing: '0.25em',
+            textTransform: 'uppercase', color: C.accent,
+            fontFamily: sans, marginBottom: '8px', fontWeight: 500
+          }}>My observations</div>
+          <div style={{
+            fontFamily: sans, fontSize: `${s(13)}px`,
+            fontWeight: 300, lineHeight: 1.55, opacity: 0.92
+          }}>{round.notes}</div>
+        </div>
+      )}
+
+      {/* AI Analysis */}
+      {round.aiAnalysis && (
+        <>
+          <div style={{
+            background: 'rgba(163,217,85,0.06)',
+            border: `1px solid ${C.accent}40`,
+            borderRadius: '8px',
+            padding: '18px 20px',
+            marginBottom: '14px'
+          }}>
+            <div style={{
+              fontSize: '11px', letterSpacing: '0.3em',
+              textTransform: 'uppercase', color: C.accent,
+              fontFamily: sans, marginBottom: '12px', fontWeight: 500,
+              display: 'flex', alignItems: 'center', gap: '8px'
+            }}>
+              ✨ Reading the Round
+            </div>
+            {round.aiAnalysis.reading && (
+              <div style={{
+                fontFamily: sans, fontSize: `${s(13)}px`,
+                fontWeight: 300, lineHeight: 1.7, opacity: 0.92,
+                whiteSpace: 'pre-wrap'
+              }}>{round.aiAnalysis.reading}</div>
+            )}
+
+            {round.aiAnalysis.tigerFiveCount && (
+              <div style={{
+                fontFamily: sans, fontSize: `${s(12)}px`,
+                fontStyle: 'italic', opacity: 0.8, marginTop: '12px',
+                paddingTop: '12px', borderTop: `1px solid ${C.border}`
+              }}>
+                <strong style={{ color: C.text, fontStyle: 'normal' }}>Tiger Five count: </strong>
+                {round.aiAnalysis.tigerFiveCount}
+              </div>
+            )}
+
+            {Array.isArray(round.aiAnalysis.areaConnections) && round.aiAnalysis.areaConnections.length > 0 && (
+              <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${C.border}` }}>
+                <div style={{
+                  fontSize: '10px', letterSpacing: '0.25em',
+                  textTransform: 'uppercase', color: C.accent,
+                  marginBottom: '8px', fontWeight: 500, fontFamily: sans
+                }}>Connection to Q2 Areas</div>
+                <ul style={{ paddingLeft: '16px', margin: 0, fontFamily: sans, fontSize: `${s(12)}px`, lineHeight: 1.6, opacity: 0.9 }}>
+                  {round.aiAnalysis.areaConnections.map((a, i) => <li key={i} style={{ marginBottom: '4px' }}>{a}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {Array.isArray(round.aiAnalysis.focusForNextRound) && round.aiAnalysis.focusForNextRound.length > 0 && (
+            <div style={{
+              background: 'rgba(0,0,0,0.22)',
+              border: `1px solid ${C.accent}50`,
+              borderRadius: '8px', padding: '18px 20px'
+            }}>
+              <div style={{
+                fontSize: '11px', letterSpacing: '0.3em',
+                textTransform: 'uppercase', color: C.accent,
+                fontFamily: sans, marginBottom: '12px', fontWeight: 500
+              }}>Focus for next round</div>
+              <ul style={{
+                fontFamily: sans, fontSize: `${s(13)}px`,
+                fontWeight: 300, lineHeight: 1.7, opacity: 0.92,
+                paddingLeft: '18px', margin: 0
+              }}>
+                {round.aiAnalysis.focusForNextRound.map((f, i) => <li key={i} style={{ marginBottom: '6px' }}>{f}</li>)}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* No AI analysis but has scorecard - show defaults for the seed round */}
+      {!round.aiAnalysis && round.id === 'seed-2026-05-13' && !compact && (
+        <div style={{
+          background: 'rgba(0,0,0,0.25)',
+          border: `1px solid ${C.border}`,
+          borderRadius: '8px',
+          padding: '16px 18px',
+          fontFamily: sans, fontSize: `${s(12)}px`,
+          fontWeight: 300, lineHeight: 1.6, opacity: 0.7
+        }}>
+          Front nine (49) much stronger than back (53). The back fell apart with three 6s and a 7 — compounding mistakes that DECADE would call avoidable. Driver dropped from 89% out → 33% in. 4 doubles + 1 triple killed the round.
+        </div>
+      )}
+    </>
+  );
+}
+
+// ============================================================
+// NEW HANDICAP CARD FORM
+// ============================================================
+function NewHandicapCardForm({ onCancel, onSave, C, serif, sans }) {
+  const [handicapIndex, setHandicapIndex] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [imageDataUrl, setImageDataUrl] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      alert('Image too large. Max 8MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1200;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+          else { width = Math.round(width * (maxDim / height)); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        setImagePreview(jpegDataUrl);
+        setImageDataUrl(jpegDataUrl);
+      };
+      img.onerror = () => alert('Could not read image. Try a JPEG screenshot.');
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = () => {
+    if (!handicapIndex.trim()) {
+      alert('Please enter your handicap index.');
+      return;
+    }
+    const d = new Date(date + 'T12:00:00');
+    onSave({
+      handicapIndex: handicapIndex.trim(),
+      date,
+      dateDisplay: d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      image: imageDataUrl,
+      notes: notes.trim()
+    });
+  };
+
+  const inputBase = {
+    width: '100%', background: 'rgba(0,0,0,0.3)',
+    border: `1px solid ${C.border}`, borderRadius: '4px',
+    padding: '12px 14px', color: C.text,
+    fontFamily: sans, fontSize: '15px',
+    fontWeight: 300, outline: 'none', boxSizing: 'border-box'
+  };
+  const labelStyle = {
+    fontSize: '10px', letterSpacing: '0.3em',
+    textTransform: 'uppercase', color: C.accent,
+    fontFamily: sans, marginBottom: '8px',
+    fontWeight: 500, display: 'block'
+  };
+
+  return (
+    <div style={{ animation: 'fadeIn 0.4s' }}>
+      <div style={{ fontSize: 'clamp(28px, 6vw, 38px)', fontStyle: 'italic', lineHeight: 1.05, marginBottom: '6px' }}>
+        Add Handicap Card
+      </div>
+      <div style={{
+        fontSize: '11px', letterSpacing: '0.3em',
+        textTransform: 'uppercase', opacity: 0.6,
+        fontFamily: sans, fontWeight: 500
+      }}>USGA Handicap Index</div>
+      <div style={{ width: '40px', height: '2px', background: C.accent, marginTop: '18px', opacity: 0.7, marginBottom: '28px' }} />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div>
+            <label style={labelStyle}>Index</label>
+            <input type="text" placeholder="19.4"
+              value={handicapIndex}
+              onChange={(e) => setHandicapIndex(e.target.value)}
+              style={inputBase} />
+          </div>
+          <div>
+            <label style={labelStyle}>Date</label>
+            <input type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              style={inputBase} />
+          </div>
+        </div>
+
+        <div>
+          <label style={labelStyle}>Handicap Card Image (optional)</label>
+          <div style={{
+            border: `1px dashed ${C.accent}70`, borderRadius: '8px',
+            padding: '20px', textAlign: 'center', cursor: 'pointer',
+            position: 'relative',
+            background: imagePreview ? 'transparent' : 'rgba(0,0,0,0.18)'
+          }}>
+            <input type="file" accept="image/*" onChange={handleImageUpload}
+              style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+            {imagePreview ? (
+              <img src={imagePreview} alt="Handicap card preview"
+                style={{ maxWidth: '100%', borderRadius: '4px', display: 'block', margin: '0 auto' }} />
+            ) : (
+              <>
+                <div style={{ fontSize: '28px', color: C.accent, opacity: 0.7, marginBottom: '6px' }}>📸</div>
+                <div style={{ fontFamily: sans, fontSize: '13px', color: C.accent, fontWeight: 500 }}>
+                  Tap to upload card screenshot
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label style={labelStyle}>Notes (optional)</label>
+          <textarea placeholder="Any context about this index update..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            style={{ ...inputBase, minHeight: '70px', resize: 'vertical', fontFamily: sans }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={handleSave} style={{
+            flex: 1, background: C.accent, border: 'none',
+            color: C.bg, padding: '14px',
+            fontFamily: sans, fontSize: '12px',
+            letterSpacing: '0.2em', textTransform: 'uppercase',
+            fontWeight: 600, cursor: 'pointer', borderRadius: '6px'
+          }}>Save Card</button>
+          <button onClick={onCancel} style={{
+            background: 'transparent', border: `1px solid ${C.border}`,
+            color: C.text, padding: '14px 22px',
+            fontFamily: sans, fontSize: '12px',
+            letterSpacing: '0.2em', textTransform: 'uppercase',
+            cursor: 'pointer', borderRadius: '6px', opacity: 0.7
+          }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
 }

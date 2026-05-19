@@ -2,6 +2,9 @@
   "functions": {
     "api/analyze-round.js": {
       "maxDuration": 30
+    },
+    "api/storage.js": {
+      "maxDuration": 10
     }
   }
 }

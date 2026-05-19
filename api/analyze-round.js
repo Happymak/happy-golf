@@ -142,6 +142,11 @@ export default async function handler(req, res) {
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+    // Model selection with env var override + fallback chain
+    // To change model without redeploying code, set ANTHROPIC_MODEL env var in Vercel
+    const primaryModel = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+    const fallbackModels = ['claude-sonnet-4-5', 'claude-3-5-sonnet-latest'];
+
     // Build the prompt with rich personal context for Happymak
     const systemPrompt = `You are Happymak's personal golf coach. You know his game intimately — his strengths, his patterns, his improvement plan for 2026. Speak to him directly, like a coach who's been working with him. Use "you" not "Happymak" in the analysis.
 
@@ -223,30 +228,55 @@ ${userContext ? `\nMy own observations about this round:\n${userContext}` : '\n(
 
 Please analyze this scorecard.`;
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: [
+    // Try primary model, then fallbacks
+    const modelsToTry = [primaryModel, ...fallbackModels.filter(m => m !== primaryModel)];
+    let response = null;
+    let lastError = null;
+    let usedModel = null;
+
+    for (const modelId of modelsToTry) {
+      try {
+        response = await anthropic.messages.create({
+          model: modelId,
+          max_tokens: 2000,
+          system: systemPrompt,
+          messages: [
             {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: imageMediaType,
-                data: imageBase64
-              }
-            },
-            {
-              type: 'text',
-              text: userMessage
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: imageMediaType,
+                    data: imageBase64
+                  }
+                },
+                {
+                  type: 'text',
+                  text: userMessage
+                }
+              ]
             }
           ]
+        });
+        usedModel = modelId;
+        break;
+      } catch (err) {
+        lastError = err;
+        // Only fallback on "model not found" errors
+        if (err.status === 404 || err.message?.includes('model')) {
+          console.log(`Model ${modelId} not available, trying next...`);
+          continue;
         }
-      ]
-    });
+        // For other errors, throw immediately
+        throw err;
+      }
+    }
+
+    if (!response) {
+      throw lastError || new Error('All models failed.');
+    }
 
     // Extract text response
     const textContent = response.content.find(c => c.type === 'text');
@@ -282,7 +312,8 @@ Please analyze this scorecard.`;
       usage: {
         inputTokens: usage.input_tokens,
         outputTokens: usage.output_tokens,
-        estimatedCost: `$${totalCost.toFixed(4)}`
+        estimatedCost: `$${totalCost.toFixed(4)}`,
+        model: usedModel
       },
       rateLimitRemaining: MAX_PER_DAY - (rateLimitStore.get(clientKey)?.count || 0)
     });
