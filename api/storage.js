@@ -1,11 +1,24 @@
 // ============================================================
 // /api/storage.js
-// Simple GET/POST endpoint for Vercel KV (auto backup of app state)
+// GET/POST endpoint for Upstash Redis (auto backup of app state)
+// Uses KV_REST_API_URL and KV_REST_API_TOKEN env vars auto-injected
+// by Upstash integration in Vercel.
 // ============================================================
 
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 
 const MAX_VALUE_SIZE_BYTES = 9 * 1024 * 1024; // 9MB safety limit
+
+// Initialize once at module level
+let redis;
+function getRedis() {
+  if (redis) return redis;
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  redis = new Redis({ url, token });
+  return redis;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,11 +27,11 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // Check if KV is configured
-  if (!process.env.KV_REST_API_URL && !process.env.KV_URL) {
+  const client = getRedis();
+  if (!client) {
     return res.status(503).json({
       error: 'Storage not configured',
-      hint: 'Create a Vercel KV store and link it to this project.'
+      hint: 'Connect an Upstash Redis database to this Vercel project.'
     });
   }
 
@@ -29,7 +42,7 @@ export default async function handler(req, res) {
       if (typeof key !== 'string' || key.length > 200) {
         return res.status(400).json({ error: 'Invalid key' });
       }
-      const value = await kv.get(key);
+      const value = await client.get(key);
       return res.status(200).json({ key, value: value || null });
     }
 
@@ -43,7 +56,6 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Invalid key' });
       }
 
-      // Size check
       const serialized = JSON.stringify(value);
       if (serialized.length > MAX_VALUE_SIZE_BYTES) {
         return res.status(413).json({
@@ -51,14 +63,14 @@ export default async function handler(req, res) {
         });
       }
 
-      await kv.set(key, value);
+      await client.set(key, value);
       return res.status(200).json({ success: true, key });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
 
   } catch (error) {
-    console.error('KV storage error:', error);
+    console.error('Storage error:', error);
     return res.status(500).json({
       error: 'Storage operation failed',
       details: error.message
