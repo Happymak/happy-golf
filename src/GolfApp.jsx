@@ -700,7 +700,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
               <HomeCard title="Course Management"    subtitle="DECADE · Tiger Five"     iconType="strategy"   C={C} serif={serif} sans={sans} onClick={() => setView('cm')} />
               <HomeCard title="Areas of Improvement" subtitle="Q2 2026"                 iconType="growth"     C={C} serif={serif} sans={sans} onClick={() => setView('areas')} />
               <HomeCard title="Practice Sessions"    subtitle="The Power of Six"        iconType="practice"   C={C} serif={serif} sans={sans} onClick={() => setView('practice')} />
-              <HomeCard title="Latest Golf Round"    subtitle="Score, feel, notes"      iconType="round"      roundData={lastRound}      C={C} serif={serif} sans={sans} onClick={() => setView('round')} />
+              <HomeCard title="Rounds"               subtitle="Last · Handicap · History" iconType="round"      roundData={lastRound}      C={C} serif={serif} sans={sans} onClick={() => setView('round')} />
               <HomeCard title="My Progress"          subtitle="Stats · trends · streaks" iconType="progress"   C={C} serif={serif} sans={sans} onClick={() => setView('progress')} />
             </div>
           </>
@@ -1800,9 +1800,21 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
         {view === 'round' && showRoundForm && (
           <NewRoundForm
             onCancel={() => setShowRoundForm(false)}
-            onSave={(newRound) => {
+            onSave={async (newRound) => {
               const roundWithId = { ...newRound, id: 'round-' + Date.now() };
-              const updatedRounds = [roundWithId, ...rounds];
+              // Compress previous rounds' images (they're going to history, no need for full res)
+              const previousRoundsCompressed = await Promise.all(
+                rounds.map(async (r) => {
+                  // Skip seed round (its image is /round-may13.png path, not data URL)
+                  if (r.id === 'seed-2026-05-13') return r;
+                  if (!r.image || !r.image.startsWith('data:')) return r;
+                  // Already compressed once? (check size proxy)
+                  if (r.image.length < 200000) return r;
+                  const compressedImage = await compressImage(r.image, 900, 0.65);
+                  return { ...r, image: compressedImage };
+                })
+              );
+              const updatedRounds = [roundWithId, ...previousRoundsCompressed];
               setRounds(updatedRounds);
               saveState({ rounds: updatedRounds });
               setShowRoundForm(false);
