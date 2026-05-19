@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, Crown, TrendingDown, Repeat, Flag } from 'lucide-react';
+import {
+  Heart, Crown, TrendingDown, Repeat, Flag,
+  WavesHorizontal, Rocket, Goal, ListChecks
+} from 'lucide-react';
 
 // =====================================================================
 // HAPPY GOLF — 2026 Season App
@@ -390,7 +393,7 @@ Woods: Still inconsistent — swing feels unstable. Need to identify the cause i
       background: `linear-gradient(180deg, ${C.bg2} 0%, ${C.bg} 60%)`,
       fontFamily: serif,
       color: C.text,
-      padding: '16px 16px 16px',
+      padding: 'max(56px, calc(env(safe-area-inset-top) + 20px)) 16px 16px',
       position: 'relative',
       boxSizing: 'border-box'
     }}>
@@ -2229,158 +2232,48 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
   );
 }
 
-function AreaIcon({ type, color, size = 30 }) {
-  const props = { width: size, height: size, viewBox: '-16 -16 32 32', fill: 'none' };
-  const stroke = { stroke: color, strokeWidth: 1.2, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' };
 
-  // 1. TEMPO: Metronome
+// ============================================================
+// AREA ICONS — final selection (May 18, 2026)
+// 4 Lucide + 2 custom SVG (for chip-arc + chip-run)
+// ============================================================
+function AreaIcon({ type, color, size = 30 }) {
+  // Lucide: WavesHorizontal, Rocket, Goal, ListChecks
   if (type === 'tempo') {
-    return (
-      <svg {...props}>
-        {/* Triangular body */}
-        <path d="M -10 12 L -5 -12 L 5 -12 L 10 12 Z" {...stroke} />
-        {/* Base line */}
-        <line x1="-12" y1="13" x2="12" y2="13" {...stroke} />
-        {/* Feet */}
-        <line x1="-10" y1="13" x2="-10" y2="14.5" {...stroke} />
-        <line x1="10" y1="13" x2="10" y2="14.5" {...stroke} />
-        {/* Vertical reference line with ticks (dashed) */}
-        <line x1="0" y1="-8" x2="0" y2="9"
-              stroke={color} strokeWidth="0.8" fill="none"
-              strokeDasharray="1.5 1.2" strokeLinecap="round" />
-        {/* Pendulum rod */}
-        <line x1="0" y1="9" x2="6" y2="-9" {...stroke} />
-        {/* Pendulum weight */}
-        <circle cx="6" cy="-9" r="1.6" {...stroke} />
-        {/* Pivot point */}
-        <circle cx="0" cy="9" r="1.2" stroke={color} strokeWidth="1.1" fill="none" />
-      </svg>
-    );
+    return <WavesHorizontal size={size} color={color} strokeWidth={1.8} />;
+  }
+  if (type === 'tee') {
+    return <Rocket size={size} color={color} strokeWidth={1.8} />;
+  }
+  if (type === 'wedge') {
+    return <Goal size={size} color={color} strokeWidth={1.8} />;
+  }
+  if (type === 'preshot') {
+    return <ListChecks size={size} color={color} strokeWidth={1.8} />;
   }
 
-  // 2. ELEVATED CHIP AND PITCH: high arc to flag in hole
+  // Custom SVG: elevated chip (semicircle + arrow)
   if (type === 'elevated') {
     return (
-      <svg {...props}>
-        {/* Ball start */}
-        <circle cx="-10" cy="6" r="1.4" {...stroke} />
-        {/* High arc trajectory (dashed) */}
-        <path d="M -10 6 Q -2 -12 6 6"
-              stroke={color} strokeWidth="1.3" fill="none"
-              strokeDasharray="1.8 1.5" strokeLinecap="round" />
-        {/* Hole ellipse */}
-        <ellipse cx="6" cy="7" rx="3" ry="0.8" {...stroke} strokeWidth="1.1" />
-        {/* Flag pole */}
-        <line x1="6" y1="6" x2="6" y2="-6" {...stroke} />
-        {/* Flag */}
-        <path d="M 6 -6 L 12 -4.5 L 6 -3 Z" {...stroke} />
+      <svg width={size} height={size} viewBox="-16 -16 32 32" fill="none">
+        <circle cx="-12" cy="6" r="1.5" stroke={color} strokeWidth="1.5" fill="none" />
+        <path d="M -12 6 A 12 12 0 0 1 12 6" stroke={color} strokeWidth="1.5" fill="none" strokeLinecap="round" />
+        <polyline points="9,3 12,6 15,3" stroke={color} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
 
-  // 3. CHIP & RUN: ball with dimples + low arc + roll to flag
+  // Custom SVG: chip & run (solid dot start, dashed bounce, arrowhead end, ground line)
   if (type === 'chiprun') {
     return (
-      <svg {...props}>
-        {/* Ball */}
-        <circle cx="-11" cy="3" r="2" {...stroke} />
-        {/* Dimples */}
-        <circle cx="-11.7" cy="2.3" r="0.25" fill={color} />
-        <circle cx="-11" cy="2.3" r="0.25" fill={color} />
-        <circle cx="-10.3" cy="2.3" r="0.25" fill={color} />
-        <circle cx="-11.7" cy="3" r="0.25" fill={color} />
-        <circle cx="-11" cy="3" r="0.25" fill={color} />
-        <circle cx="-10.3" cy="3" r="0.25" fill={color} />
-        <circle cx="-11.7" cy="3.7" r="0.25" fill={color} />
-        <circle cx="-11" cy="3.7" r="0.25" fill={color} />
-        <circle cx="-10.3" cy="3.7" r="0.25" fill={color} />
-        {/* Low arc + run trajectory */}
-        <path d="M -9 3 Q -5 -1 -1 2 Q 2 4 5 4 L 7 4"
-              stroke={color} strokeWidth="1.3" fill="none"
-              strokeDasharray="1.5 1.5" strokeLinecap="round" />
-        {/* Hole */}
-        <ellipse cx="7" cy="5" rx="2.5" ry="0.7" {...stroke} strokeWidth="1.1" />
-        {/* Flag pole */}
-        <line x1="7" y1="4" x2="7" y2="-8" {...stroke} />
-        {/* Flag */}
-        <path d="M 7 -8 L 13 -6.5 L 7 -5 Z" {...stroke} />
+      <svg width={size} height={size} viewBox="-16 -16 32 32" fill="none">
+        <circle cx="-11" cy="-3" r="1.8" fill={color} />
+        <path d="M -9 -3 Q -5 -5 0 -3 Q 5 -1 8 -3" stroke={color} strokeWidth="1.5" fill="none" strokeDasharray="1.5 2" strokeLinecap="round" />
+        <polyline points="6,-5.5 9,-3 6,-0.5" stroke={color} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        <line x1="-13" y1="3" x2="13" y2="3" stroke={color} strokeWidth="0.8" opacity="0.5" />
       </svg>
     );
   }
 
-  // 4. TEE SHOT: ball with dimples on tee
-  if (type === 'tee') {
-    return (
-      <svg {...props}>
-        {/* Ball */}
-        <circle cx="0" cy="-5" r="4.5" {...stroke} />
-        {/* Dimples grid */}
-        <circle cx="-1.8" cy="-6.5" r="0.3" fill={color} />
-        <circle cx="0" cy="-7" r="0.3" fill={color} />
-        <circle cx="1.8" cy="-6.5" r="0.3" fill={color} />
-        <circle cx="-2.5" cy="-5" r="0.3" fill={color} />
-        <circle cx="-0.8" cy="-5" r="0.3" fill={color} />
-        <circle cx="0.8" cy="-5" r="0.3" fill={color} />
-        <circle cx="2.5" cy="-5" r="0.3" fill={color} />
-        <circle cx="-1.8" cy="-3.5" r="0.3" fill={color} />
-        <circle cx="0" cy="-3" r="0.3" fill={color} />
-        <circle cx="1.8" cy="-3.5" r="0.3" fill={color} />
-        {/* Tee cup */}
-        <path d="M -2 -0.5 L 2 -0.5 L 1.3 1 L -1.3 1 Z" {...stroke} />
-        {/* Tee stem */}
-        <line x1="0" y1="1" x2="0" y2="10" {...stroke} />
-        {/* Ground */}
-        <line x1="-7" y1="10" x2="7" y2="10" stroke={color} strokeWidth="1" fill="none" strokeLinecap="round" />
-      </svg>
-    );
-  }
-
-  // 5. WEDGE: target rings with flag in center
-  if (type === 'wedge') {
-    return (
-      <svg {...props}>
-        {/* Outer target ring (ellipse - perspective) */}
-        <ellipse cx="0" cy="4" rx="11" ry="3.5" {...stroke} />
-        {/* Middle ring */}
-        <ellipse cx="0" cy="4" rx="7" ry="2.3" {...stroke} />
-        {/* Inner ring */}
-        <ellipse cx="0" cy="4" rx="3.5" ry="1.2" {...stroke} />
-        {/* Center dot */}
-        <circle cx="0" cy="4" r="0.9" fill={color} />
-        {/* Flag pole rising from center */}
-        <line x1="0" y1="4" x2="0" y2="-8" {...stroke} strokeWidth="1.3" />
-        {/* Flag (filled) */}
-        <path d="M 0 -8 L 6 -6.5 L 0 -5 Z" fill={color} stroke={color} strokeWidth="1.2" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-
-  // 6. PRE-SHOT ROUTINE: numbered circles 1, 2, 3 with arrows
-  if (type === 'preshot') {
-    return (
-      <svg {...props}>
-        {/* Step 1 */}
-        <circle cx="-8" cy="-7" r="2.5" {...stroke} />
-        <text x="-8" y="-5.7" textAnchor="middle" fill={color}
-              fontFamily="'Inter', sans-serif" fontSize="3" fontWeight="700">1</text>
-        <line x1="-4.5" y1="-7" x2="3" y2="-7" {...stroke} strokeWidth="1.3" />
-        <polyline points="2,-8.5 3.5,-7 2,-5.5" {...stroke} strokeWidth="1.3" />
-
-        {/* Step 2 */}
-        <circle cx="-8" cy="0" r="2.5" {...stroke} />
-        <text x="-8" y="1.3" textAnchor="middle" fill={color}
-              fontFamily="'Inter', sans-serif" fontSize="3" fontWeight="700">2</text>
-        <line x1="-4.5" y1="0" x2="5" y2="0" {...stroke} strokeWidth="1.3" />
-        <polyline points="4,-1.5 5.5,0 4,1.5" {...stroke} strokeWidth="1.3" />
-
-        {/* Step 3 */}
-        <circle cx="-8" cy="7" r="2.5" {...stroke} />
-        <text x="-8" y="8.3" textAnchor="middle" fill={color}
-              fontFamily="'Inter', sans-serif" fontSize="3" fontWeight="700">3</text>
-        <line x1="-4.5" y1="7" x2="7" y2="7" {...stroke} strokeWidth="1.3" />
-        <polyline points="6,5.5 7.5,7 6,8.5" {...stroke} strokeWidth="1.3" />
-      </svg>
-    );
-  }
   return null;
 }
