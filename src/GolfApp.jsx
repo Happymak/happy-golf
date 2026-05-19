@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Heart, Crown, TrendingDown, Repeat, Flag } from 'lucide-react';
 
 // =====================================================================
 // HAPPY GOLF — 2026 Season App
@@ -1897,184 +1898,39 @@ function BookIcon({ C, size = 24 }) {
   );
 }
 
-// SECTION ICONS
 
 // ============================================================
-// SECTION ICONS — line-art style, lime accent
-// Based on user reference image (May 18, 2026)
+// NEW ROUND FORM - simplified: course name + scorecard image
 // ============================================================
 // ============================================================
-// SECTION ICONS — final set from user reference (May 18, 2026)
-// All in lime green, line-art style
+// SECTION ICONS — using Lucide for home sections,
+// custom SVG for sub-sections (calendar, indoor, outdoor, log)
 // ============================================================
 function SectionIcon({ type, color, size = 28, scoreNumber, roundData }) {
-  const props = { width: size, height: size, viewBox: '-16 -16 32 32', fill: 'none' };
   const stroke = { stroke: color, strokeWidth: 1.1, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' };
 
-  // ===== MANTRA: meditation figure with aura rays + lotus petals =====
+  // === Home section icons (Lucide) ===
   if (type === 'mantra') {
-    return (
-      <svg {...props}>
-        {/* Aura rays */}
-        <line x1="0" y1="-15" x2="0" y2="-13" {...stroke} />
-        <line x1="-5" y1="-13" x2="-4" y2="-11.5" {...stroke} />
-        <line x1="5" y1="-13" x2="4" y2="-11.5" {...stroke} />
-        <line x1="-8" y1="-10" x2="-6.5" y2="-9" {...stroke} />
-        <line x1="8" y1="-10" x2="6.5" y2="-9" {...stroke} />
-        {/* Head */}
-        <circle cx="0" cy="-7.5" r="2.4" {...stroke} />
-        {/* Body with hands in prayer */}
-        <path d="M -3.5 -2 Q -4 -5 -2 -5 L -0.5 -3 L 0 -1 L 0.5 -3 L 2 -5 Q 4 -5 3.5 -2 Q 3.5 1 2 2.5 L -2 2.5 Q -3.5 1 -3.5 -2 Z" {...stroke} />
-        {/* Crossed legs */}
-        <path d="M -3 2.5 Q -6 4 -7 6 Q -5 9 -2 8 Q 0 7 2 8 Q 5 9 7 6 Q 6 4 3 2.5 Z" {...stroke} />
-        {/* Lotus petals */}
-        <path d="M -7 5 Q -11 5 -12 8 Q -10 10 -8 8 Z" {...stroke} />
-        <path d="M 7 5 Q 11 5 12 8 Q 10 10 8 8 Z" {...stroke} />
-        <path d="M -10 7 Q -13 9 -12 11 Q -10 11 -8 9 Z" {...stroke} />
-        <path d="M 10 7 Q 13 9 12 11 Q 10 11 8 9 Z" {...stroke} />
-      </svg>
-    );
+    return <Heart size={size} color={color} strokeWidth={1.8} />;
   }
-
-  // ===== STRATEGY: chess KING with cross =====
   if (type === 'strategy') {
-    return (
-      <svg {...props}>
-        {/* Cross on top */}
-        <line x1="0" y1="-15" x2="0" y2="-11" {...stroke} strokeWidth="1.3" />
-        <line x1="-1.5" y1="-13" x2="1.5" y2="-13" {...stroke} strokeWidth="1.3" />
-        {/* Crown - small dome */}
-        <ellipse cx="0" cy="-9" rx="3.5" ry="1.5" {...stroke} />
-        <path d="M -3.5 -9 L -3.5 -7" {...stroke} />
-        <path d="M 3.5 -9 L 3.5 -7" {...stroke} />
-        <ellipse cx="0" cy="-7" rx="3.5" ry="1.2" {...stroke} />
-        {/* Collar */}
-        <ellipse cx="0" cy="-5.5" rx="4.5" ry="1.3" {...stroke} />
-        <path d="M -4.5 -5.5 L -4.5 -4" {...stroke} />
-        <path d="M 4.5 -5.5 L 4.5 -4" {...stroke} />
-        <ellipse cx="0" cy="-4" rx="4.5" ry="1.2" {...stroke} />
-        {/* Body */}
-        <path d="M -4 -3 Q -4 -1 -2.5 0 Q -2 2 -2.5 4 L 2.5 4 Q 2 2 2.5 0 Q 4 -1 4 -3 Z" {...stroke} />
-        {/* Base */}
-        <ellipse cx="0" cy="5" rx="5.5" ry="1.4" {...stroke} />
-        <path d="M -5.5 5 L -5.5 7" {...stroke} />
-        <path d="M 5.5 5 L 5.5 7" {...stroke} />
-        <ellipse cx="0" cy="7" rx="5.5" ry="1.3" {...stroke} />
-        <ellipse cx="0" cy="8.5" rx="6.5" ry="1.5" {...stroke} />
-      </svg>
-    );
+    return <Crown size={size} color={color} strokeWidth={1.8} />;
   }
-
-  // ===== GROWTH (Areas of Improvement): GOLF BAG with clubs sticking out =====
   if (type === 'growth') {
-    return (
-      <svg {...props}>
-        {/* Clubs sticking up out of the bag */}
-        {/* Club 1 (left, shortest) */}
-        <line x1="-3" y1="-3" x2="-4" y2="-11" {...stroke} strokeWidth="1.2" />
-        <path d="M -4.5 -11 Q -5.5 -12 -4 -12.5 Q -3 -12 -3.5 -11 Z" {...stroke} strokeWidth="1.1" />
-        {/* Club 2 (middle, tallest) */}
-        <line x1="-0.5" y1="-3" x2="-1" y2="-13" {...stroke} strokeWidth="1.2" />
-        <path d="M -1.5 -13 Q -2.5 -14 -1 -14.5 Q 0 -14 -0.5 -13 Z" {...stroke} strokeWidth="1.1" />
-        {/* Club 3 (right, medium) */}
-        <line x1="2" y1="-3" x2="2.5" y2="-12" {...stroke} strokeWidth="1.2" />
-        <path d="M 2 -12 Q 1 -13 2.5 -13.5 Q 3.5 -13 3 -12 Z" {...stroke} strokeWidth="1.1" />
-        {/* Club 4 (rightmost, putter style) */}
-        <line x1="4.5" y1="-3" x2="5" y2="-10" {...stroke} strokeWidth="1.2" />
-        <path d="M 4 -10 L 6 -10 L 6 -11 L 4 -11 Z" {...stroke} strokeWidth="1.1" />
-
-        {/* Bag body - main rectangular tube */}
-        <path d="M -6 -3
-                 L 6 -3
-                 L 7 0
-                 L 7 9
-                 Q 7 11 5 11
-                 L -5 11
-                 Q -7 11 -7 9
-                 L -7 0 Z"
-              {...stroke} strokeWidth="1.2" />
-
-        {/* Bag pocket / strap detail */}
-        <path d="M -4 1 L 4 1 L 4 6 L -4 6 Z" {...stroke} strokeWidth="1.1" />
-        {/* Strap line */}
-        <path d="M -7 2 Q -10 5 -7 8" {...stroke} strokeWidth="1.1" />
-      </svg>
-    );
+    return <TrendingDown size={size} color={color} strokeWidth={1.8} />;
   }
-
-  // ===== PRACTICE: descending bars + golf ball (top-right) =====
   if (type === 'practice') {
-    return (
-      <svg {...props}>
-        {/* Golf ball top-right with dimples */}
-        <circle cx="8" cy="-8" r="4.5" {...stroke} strokeWidth="1.2" />
-        <circle cx="6.5" cy="-9.5" r="0.35" fill={color}/>
-        <circle cx="8" cy="-10" r="0.35" fill={color}/>
-        <circle cx="9.5" cy="-9.5" r="0.35" fill={color}/>
-        <circle cx="6" cy="-8" r="0.35" fill={color}/>
-        <circle cx="8" cy="-8" r="0.35" fill={color}/>
-        <circle cx="10" cy="-8" r="0.35" fill={color}/>
-        <circle cx="6.5" cy="-6.5" r="0.35" fill={color}/>
-        <circle cx="8" cy="-6" r="0.35" fill={color}/>
-        <circle cx="9.5" cy="-6.5" r="0.35" fill={color}/>
-
-        {/* Descending bars - 4 going down */}
-        <rect x="-12" y="-2" width="3" height="11" {...stroke} strokeWidth="1.2" />
-        <rect x="-7.5" y="0" width="3" height="9" {...stroke} strokeWidth="1.2" />
-        <rect x="-3" y="3" width="3" height="6" {...stroke} strokeWidth="1.2" />
-        <rect x="1.5" y="5" width="3" height="4" {...stroke} strokeWidth="1.2" />
-
-        {/* Baseline */}
-        <line x1="-13" y1="9" x2="9" y2="9" {...stroke} strokeWidth="1" />
-
-        {/* Descending dashed trajectory line through bars */}
-        <polyline points="-11,-4 -7,-2 -3,1 3,4 7,6"
-                  stroke={color} strokeWidth="1.3" fill="none"
-                  strokeDasharray="1.8 1.5"
-                  strokeLinecap="round" strokeLinejoin="round" />
-        {/* Arrowhead */}
-        <polyline points="5.5,7 7.5,6.3 6.8,4.3" {...stroke} strokeWidth="1.3" />
-      </svg>
-    );
+    return <Repeat size={size} color={color} strokeWidth={1.8} />;
   }
-
-  // ===== ROUND: just the gross score, big and clean =====
   if (type === 'round') {
-    const r = roundData || {};
-    const grossScore = r.grossScore !== undefined && r.grossScore !== 0 ? r.grossScore : 102;
-    const courseShort = r.courseShort || 'NORMANDY';
-    const scoreStr = String(grossScore);
-
-    // Font size based on digit count
-    const fontSize = scoreStr.length === 2 ? 17 : scoreStr.length === 3 ? 14 : 11;
-
-    return (
-      <svg {...props}>
-        {/* Course name top - subtle */}
-        <text x="0" y="-9" textAnchor="middle"
-              fill={color}
-              fontFamily="'Inter', sans-serif"
-              fontSize="3.2"
-              fontWeight="600"
-              opacity="0.85"
-              letterSpacing="0.15em">
-          {courseShort.length > 10 ? courseShort.substring(0, 10) : courseShort}
-        </text>
-        {/* Big score */}
-        <text x="0" y="6"
-              textAnchor="middle"
-              fill={color}
-              fontFamily="Georgia, serif"
-              fontStyle="italic"
-              fontSize={fontSize}
-              fontWeight="600">
-          {scoreStr}
-        </text>
-      </svg>
-    );
+    // For round, we show the Flag icon at the standard size
+    // The score number is displayed elsewhere (in the home card text)
+    return <Flag size={size} color={color} strokeWidth={1.8} />;
   }
 
-  // ===== Sub-section icons for Practice subviews =====
+  // === Sub-section icons (custom SVG) ===
+  const props = { width: size, height: size, viewBox: '-16 -16 32 32', fill: 'none' };
+
   if (type === 'calendar') {
     return (
       <svg {...props}>
