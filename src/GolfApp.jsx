@@ -2053,19 +2053,51 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Image too large. Max 5MB. Try compressing or taking a smaller photo.');
+    if (file.size > 8 * 1024 * 1024) {
+      alert('Image too large. Max 8MB. Try compressing or taking a smaller photo.');
       return;
     }
-    setImageMediaType(file.type);
+
+    // Read file then convert to JPEG via canvas (handles HEIC, ensures consistent format)
     const reader = new FileReader();
     reader.onload = (event) => {
-      const dataUrl = event.target.result;
-      setImagePreview(dataUrl);
-      setImageDataUrl(dataUrl);
-      // Reset analysis if image changes
-      setAiAnalysis(null);
-      setAnalysisError(null);
+      const img = new Image();
+      img.onload = () => {
+        // Draw to canvas, scale down if too big (max 1600px on long side)
+        const maxDim = 1600;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round(height * (maxDim / width));
+            width = maxDim;
+          } else {
+            width = Math.round(width * (maxDim / height));
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        // Convert to JPEG (handles HEIC, PNG, anything)
+        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        setImagePreview(jpegDataUrl);
+        setImageDataUrl(jpegDataUrl);
+        setImageMediaType('image/jpeg');
+        // Reset analysis if image changes
+        setAiAnalysis(null);
+        setAnalysisError(null);
+      };
+      img.onerror = () => {
+        alert('Could not read image. iOS HEIC photos sometimes fail. Try: in Photos, share → Save as JPEG, then upload that. Or take a screenshot of the scorecard.');
+      };
+      img.src = event.target.result;
+    };
+    reader.onerror = () => {
+      alert('Could not read file. Please try a different image.');
     };
     reader.readAsDataURL(file);
   };
@@ -2084,13 +2116,24 @@ function NewRoundForm({ onCancel, onSave, C, serif, sans }) {
     setAnalysisError(null);
 
     try {
-      // Extract base64 (strip data URL prefix)
-      const base64Match = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
-      if (!base64Match) {
-        throw new Error('Invalid image data.');
+      // Extract base64 from data URL (iOS Safari-safe parsing without regex)
+      if (!imageDataUrl || !imageDataUrl.startsWith('data:')) {
+        throw new Error('Invalid image data — please re-upload the scorecard.');
       }
-      const mediaType = base64Match[1];
-      const base64Data = base64Match[2];
+      const commaIdx = imageDataUrl.indexOf(',');
+      const semicolonIdx = imageDataUrl.indexOf(';');
+      if (commaIdx === -1 || semicolonIdx === -1) {
+        throw new Error('Image format not recognized — please try a different image.');
+      }
+      // "data:image/jpeg;base64,..." → mediaType = "image/jpeg"
+      const mediaType = imageDataUrl.substring(5, semicolonIdx);
+      const base64Data = imageDataUrl.substring(commaIdx + 1);
+
+      // Anthropic only accepts these media types
+      const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!validTypes.includes(mediaType)) {
+        throw new Error(`Image format "${mediaType}" not supported. Please use JPG or PNG. If you used a HEIC photo, try taking a screenshot of it first or convert it.`);
+      }
 
       const response = await fetch('/api/analyze-round', {
         method: 'POST',
